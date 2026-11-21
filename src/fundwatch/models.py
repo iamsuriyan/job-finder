@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -41,6 +43,9 @@ class Extraction(BaseModel):
     sector: str | None = None
     location: str | None = None
     raw_json: str | None = None
+    domain: str | None = None
+    founders: list[dict[str, str]] | None = None
+    emails: list[dict[str, Any]] | None = None
 
 
 class FilterConfig(BaseModel):
@@ -87,6 +92,7 @@ class Settings(BaseModel):
     # Runtime / Environment settings
     db_path: str = "./data/fundwatch.db"
     log_level: str = "INFO"
+    find_founder_emails: bool = True
 
     # Secrets overlayed from environment
     telegram_bot_token: str | None = None
@@ -99,6 +105,7 @@ class Settings(BaseModel):
     smtp_password: str | None = None
     email_to: str | None = None
     anthropic_api_key: str | None = None
+    hunter_api_key: str | None = None
 
     @field_validator("poll_interval_minutes")
     @classmethod

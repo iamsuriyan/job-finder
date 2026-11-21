@@ -107,6 +107,13 @@ def load_config(
     raw_data["smtp_password"] = os.environ.get("SMTP_PASSWORD")
     raw_data["email_to"] = os.environ.get("EMAIL_TO")
     raw_data["anthropic_api_key"] = os.environ.get("ANTHROPIC_API_KEY")
+    raw_data["hunter_api_key"] = os.environ.get("HUNTER_API_KEY")
+    if "FIND_FOUNDER_EMAILS" in os.environ:
+        raw_data["find_founder_emails"] = os.environ["FIND_FOUNDER_EMAILS"].lower() in {
+            "true",
+            "1",
+            "yes",
+        }
 
     try:
         settings = Settings(**raw_data)

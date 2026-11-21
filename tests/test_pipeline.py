@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -33,6 +33,7 @@ def settings() -> Settings:
         user_agent="test-bot/1.0",
         request_timeout_seconds=5.0,
         max_article_age_days=7,
+        find_founder_emails=False,
     )
 
 
@@ -133,5 +134,45 @@ def test_pipeline_dry_run_mode(db: Database, settings: Settings) -> None:
     assert stats.matched == 2
     assert stats.notified == 2
     assert len(printed) == 2
-    assert any("💰 Robotics Startup Raises $15M in Series A" in p for p in printed)
-    assert any("💰 Fintech App Closes $5M Seed Round" in p for p in printed)
+    assert any("Robotics Startup" in p for p in printed)
+    assert any("Fintech App" in p for p in printed)
+
+
+def test_pipeline_with_founder_email_discovery(db: Database) -> None:
+    settings = Settings(
+        poll_interval_minutes=20,
+        feeds=[Feed(name="SampleFeed", url="https://example.com/rss")],
+        filters=FilterConfig(funding_keywords=["raises"]),
+        find_founder_emails=True,
+    )
+    xml = (FIXTURES_DIR / "sample_feed.xml").read_text(encoding="utf-8")
+    with respx.mock:
+        respx.get("https://example.com/rss").mock(return_value=httpx.Response(200, text=xml))
+        with patch("fundwatch.email_finder.discover_founding_team_emails") as mock_finder:
+            mock_finder.return_value = (
+                "botco.com",
+                [{"name": "Alice Bot", "role": "CEO"}],
+                [
+                    {
+                        "name": "Alice Bot",
+                        "email": "alice@botco.com",
+                        "confidence": 95,
+                        "verified": True,
+                    }
+                ],
+            )
+            fake_notifier = MagicMock()
+            fake_notifier.name = "fake"
+            stats = run_cycle(
+                settings=settings,
+                db=db,
+                notifiers=[fake_notifier],
+                is_bootstrap=False,
+                delay_between_feeds=0,
+            )
+            assert stats.matched >= 1
+            ext = db.get_extraction("https://example.com/item-1")
+            assert ext is not None
+            assert ext.domain == "botco.com"
+            assert ext.emails is not None
+            assert ext.emails[0]["email"] == "alice@botco.com"

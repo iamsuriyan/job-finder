@@ -50,6 +50,8 @@ Article summary: {article.summary or "N/A"}
 
 Return ONLY a JSON object with these exact keys:
 - company: string name of company raising funds, or null
+- domain: official website domain (e.g. cognition.ai, satsure.co), or null
+- founders: list of objects with "name" and "role" of founders mentioned, or null
 - amount: numeric amount raised (as a number e.g. 15.0 for $15M or null)
 - currency: 3-letter currency code (e.g. USD, INR, EUR) or null
 - stage: funding round stage (e.g. Seed, Pre-Seed, Series A, Series B, Series C), or null
@@ -84,6 +86,8 @@ Return ONLY valid JSON.
         extraction = Extraction(
             article_id=article.id,
             company=parsed.get("company"),
+            domain=parsed.get("domain"),
+            founders=parsed.get("founders"),
             amount=float(parsed["amount"]) if parsed.get("amount") is not None else None,
             currency=parsed.get("currency"),
             stage=parsed.get("stage"),

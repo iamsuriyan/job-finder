@@ -17,6 +17,8 @@ feeds:
   - name: TechCrunch Startups
     url: https://techcrunch.com/category/startups/feed/
 
+find_founder_emails: true
+
 filters:
   funding_keywords:
     - raises

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,7 +16,7 @@ from fundwatch.dedup import is_fuzzy_duplicate, normalize_title
 from fundwatch.extractor import extract_funding_details
 from fundwatch.fetcher import fetch_feed
 from fundwatch.filters import is_funding_item
-from fundwatch.models import Settings
+from fundwatch.models import Extraction, Settings
 from fundwatch.notifiers import (
     Notifier,
     format_article_message,
@@ -150,6 +151,47 @@ def run_cycle(
             extraction = None
             if settings.llm_extraction.enabled:
                 extraction = extract_funding_details(article, settings, db=db)
+
+            # Mandatory founding team & email discovery
+            if settings.find_founder_emails:
+                from fundwatch.email_finder import discover_founding_team_emails
+
+                article_full_text = f"{article.title} {article.summary or ''}"
+                known_company = extraction.company if extraction else None
+                if not known_company:
+                    comp_match = re.search(
+                        r"^([A-Z0-9][\w\s&.-]{1,30}?)\s+(?:raises|raised|secures|bags|closes)",
+                        article.title,
+                        re.IGNORECASE,
+                    )
+                    if comp_match:
+                        known_company = comp_match.group(1).strip()
+                    else:
+                        known_company = article.title.split()[0]
+
+                domain, founders, emails = discover_founding_team_emails(
+                    company_name=known_company,
+                    article_text=article_full_text,
+                    known_domain=extraction.domain if extraction else None,
+                    known_founders=extraction.founders if extraction else None,
+                    hunter_api_key=settings.hunter_api_key,
+                    http_client=http_client,
+                )
+
+                if extraction is None:
+                    extraction = Extraction(
+                        article_id=article.id,
+                        company=known_company,
+                        domain=domain,
+                        founders=founders,
+                        emails=emails,
+                    )
+                else:
+                    extraction.domain = domain
+                    extraction.founders = founders
+                    extraction.emails = emails
+
+                db.save_extraction(extraction)
 
             if dry_run:
                 msg = format_article_message(article, extraction)

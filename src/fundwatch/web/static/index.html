@@ -235,6 +235,21 @@
               <p v-if="a.summary" class="mt-3 text-xs text-mono-600 dark:text-mono-400 line-clamp-2 leading-relaxed">
                 {{ a.summary }}
               </p>
+
+              <!-- Discovered Founder Emails Pill Block -->
+              <div v-if="a.emails && a.emails.length" class="mt-3 pt-2.5 border-t border-mono-100 dark:border-mono-800/80 font-mono text-xs">
+                <div class="text-[10px] text-mono-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Founding Team & Emails</span>
+                  <span v-if="a.domain" class="text-mono-500 font-normal lowercase">{{ a.domain }}</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <div v-for="em in a.emails.slice(0, 2)" :key="em.email" @click="copyJson(em.email)" class="cursor-pointer group/em inline-flex items-center gap-1.5 px-2 py-1 rounded border border-mono-300 dark:border-mono-700 bg-mono-100/70 dark:bg-mono-950 text-mono-900 dark:text-mono-100 hover:border-mono-500 transition" title="Click to copy email">
+                    <span class="text-[11px] font-medium">{{ em.email }}</span>
+                    <span class="text-[9px] text-mono-400 opacity-60 group-hover/em:opacity-100">📋</span>
+                  </div>
+                  <span v-if="a.emails.length > 2" class="text-[10px] text-mono-400 self-center">+{{ a.emails.length - 2 }} more</span>
+                </div>
+              </div>
             </div>
 
             <div class="mt-4 pt-3 border-t border-mono-100 dark:border-mono-800/80 flex items-center justify-between text-xs font-mono">
@@ -398,6 +413,34 @@
             <div v-if="selectedArticle.sector" class="flex justify-between"><span class="text-mono-500">Sector:</span> <span>{{ selectedArticle.sector }}</span></div>
             <div v-if="selectedArticle.location" class="flex justify-between"><span class="text-mono-500">Location:</span> <span>{{ selectedArticle.location }}</span></div>
             <div v-if="selectedArticle.investors && selectedArticle.investors.length" class="flex justify-between"><span class="text-mono-500">Investors:</span> <span>{{ selectedArticle.investors.join(', ') }}</span></div>
+          </div>
+
+          <!-- Founding Team & Email Directory in Drawer -->
+          <div v-if="selectedArticle.emails && selectedArticle.emails.length" class="p-4 rounded-xl border border-mono-200 dark:border-mono-800 bg-mono-50 dark:bg-mono-950 space-y-3 font-mono">
+            <div class="flex items-center justify-between">
+              <div class="font-bold uppercase tracking-wider text-mono-400 text-[10px]">Founding Team & Direct Contacts</div>
+              <span v-if="selectedArticle.domain" class="text-xs text-mono-500">{{ selectedArticle.domain }}</span>
+            </div>
+            <div class="space-y-2">
+              <div v-for="em in selectedArticle.emails" :key="em.email" class="p-2.5 rounded-lg border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900 flex items-center justify-between gap-2 text-xs">
+                <div>
+                  <div class="font-semibold text-mono-900 dark:text-mono-100 flex items-center gap-1.5">
+                    <span>{{ em.name }}</span>
+                    <span v-if="em.role" class="text-[10px] text-mono-500 font-normal">({{ em.role }})</span>
+                  </div>
+                  <div class="text-mono-600 dark:text-mono-400 font-mono text-[11px]">{{ em.email }}</div>
+                  <div class="text-[9px] text-mono-400 mt-0.5">
+                    <span v-if="em.provider">{{ em.provider }} · </span>
+                    <span>Source: {{ em.source }}</span>
+                    <span v-if="em.verified" class="ml-1 text-mono-900 dark:text-mono-100 font-bold">[Verified]</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button @click="copyJson(em.email)" class="px-2 py-1 rounded text-[10px] border border-mono-300 dark:border-mono-700 hover:bg-mono-100 dark:hover:bg-mono-800 transition">Copy</button>
+                  <a :href="'mailto:' + em.email" class="px-2 py-1 rounded text-[10px] bg-mono-900 text-white dark:bg-white dark:text-mono-950 font-bold">Mail ↗</a>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div>

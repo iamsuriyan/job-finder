@@ -35,7 +35,10 @@ CREATE TABLE IF NOT EXISTS extractions (
   investors   TEXT,
   sector      TEXT,
   location    TEXT,
-  raw_json    TEXT
+  raw_json    TEXT,
+  domain      TEXT,
+  founders    TEXT,
+  emails      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS feed_state (
@@ -77,9 +80,17 @@ class Database:
             conn.close()
 
     def init_db(self) -> None:
-        """Initialize SQLite tables and indexes."""
+        """Initialize SQLite tables and indexes with automated migration for new columns."""
         with self.connection() as conn:
             conn.executescript(SCHEMA_SQL)
+            cursor = conn.execute("PRAGMA table_info(extractions)")
+            cols = {row["name"] for row in cursor.fetchall()}
+            if "domain" not in cols:
+                conn.execute("ALTER TABLE extractions ADD COLUMN domain TEXT")
+            if "founders" not in cols:
+                conn.execute("ALTER TABLE extractions ADD COLUMN founders TEXT")
+            if "emails" not in cols:
+                conn.execute("ALTER TABLE extractions ADD COLUMN emails TEXT")
 
     def is_empty(self) -> bool:
         """Check if articles table is empty (used for first-run bootstrap detection)."""
@@ -223,13 +234,15 @@ class Database:
         investors_json = (
             json.dumps(extraction.investors) if extraction.investors is not None else None
         )
+        founders_json = json.dumps(extraction.founders) if extraction.founders is not None else None
+        emails_json = json.dumps(extraction.emails) if extraction.emails is not None else None
         with self.connection() as conn:
             conn.execute(
                 """
                 INSERT INTO extractions (
                     article_id, company, amount, currency, stage,
-                    investors, sector, location, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    investors, sector, location, raw_json, domain, founders, emails
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(article_id) DO UPDATE SET
                     company = excluded.company,
                     amount = excluded.amount,
@@ -238,7 +251,10 @@ class Database:
                     investors = excluded.investors,
                     sector = excluded.sector,
                     location = excluded.location,
-                    raw_json = excluded.raw_json
+                    raw_json = excluded.raw_json,
+                    domain = excluded.domain,
+                    founders = excluded.founders,
+                    emails = excluded.emails
                 """,
                 (
                     extraction.article_id,
@@ -250,6 +266,9 @@ class Database:
                     extraction.sector,
                     extraction.location,
                     extraction.raw_json,
+                    extraction.domain,
+                    founders_json,
+                    emails_json,
                 ),
             )
 
@@ -262,6 +281,15 @@ class Database:
             if not row:
                 return None
             investors = json.loads(row["investors"]) if row["investors"] else None
+            founders = (
+                json.loads(row["founders"])
+                if ("founders" in row.keys() and row["founders"])
+                else None
+            )
+            emails = (
+                json.loads(row["emails"]) if ("emails" in row.keys() and row["emails"]) else None
+            )
+            domain = row["domain"] if "domain" in row.keys() else None
             return Extraction(
                 article_id=row["article_id"],
                 company=row["company"],
@@ -272,6 +300,9 @@ class Database:
                 sector=row["sector"],
                 location=row["location"],
                 raw_json=row["raw_json"],
+                domain=domain,
+                founders=founders,
+                emails=emails,
             )
 
     def get_recent_articles(self, limit: int = 20, matched_only: bool = False) -> list[Article]:
@@ -313,6 +344,9 @@ class Database:
             a.first_seen_at,
             a.notified,
             e.company,
+            e.domain,
+            e.founders,
+            e.emails,
             e.amount,
             e.currency,
             e.stage,
@@ -430,6 +464,9 @@ class Database:
                 a.matched,
                 a.notified,
                 e.company,
+                e.domain,
+                e.founders,
+                e.emails,
                 e.amount,
                 e.currency,
                 e.stage,
@@ -451,6 +488,16 @@ class Database:
                 if item.get("investors") and isinstance(item["investors"], str):
                     try:
                         item["investors"] = json.loads(item["investors"])
+                    except Exception:
+                        pass
+                if item.get("founders") and isinstance(item["founders"], str):
+                    try:
+                        item["founders"] = json.loads(item["founders"])
+                    except Exception:
+                        pass
+                if item.get("emails") and isinstance(item["emails"], str):
+                    try:
+                        item["emails"] = json.loads(item["emails"])
                     except Exception:
                         pass
                 results.append(item)

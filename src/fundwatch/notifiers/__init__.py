@@ -73,7 +73,29 @@ def format_article_message(article: Article, extraction: Extraction | None = Non
         if meta_parts:
             lines.append(" · ".join(meta_parts))
 
-    # Line 4: Source & date
+        # Line 4: Website / Domain
+        if extraction.domain:
+            lines.append(f"🌐 Website: {extraction.domain}")
+
+        # Line 5: Founding team emails & contacts
+        if extraction.emails:
+            email_lines = ["✉️ Founding Team & Contacts:"]
+            for em in extraction.emails[:3]:
+                name_role = em.get("name") or "Contact"
+                role_str = (
+                    f" ({em['role']})"
+                    if em.get("role") and em["role"] not in {"General Contact", "General"}
+                    else ""
+                )
+                verified_tag = " [Verified]" if em.get("verified") else ""
+                email_lines.append(f"   • {name_role}{role_str}: {em['email']}{verified_tag}")
+            lines.append("\n".join(email_lines))
+        elif extraction.founders:
+            founder_names = [f["name"] for f in extraction.founders if f.get("name")]
+            if founder_names:
+                lines.append(f"👤 Founders: {', '.join(founder_names)}")
+
+    # Line: Source & date
     source_parts = [f"Source: {article.feed_name}"]
     if article.published_at:
         # Show YYYY-MM-DD or readable prefix
