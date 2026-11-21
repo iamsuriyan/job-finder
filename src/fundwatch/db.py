@@ -367,3 +367,98 @@ class Database:
                 "by_feed": [dict(r) for r in feed_counts],
                 "by_day": [dict(r) for r in daily_counts],
             }
+
+    def get_articles_paged(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        matched_only: bool = False,
+        search: str | None = None,
+        feed_name: str | None = None,
+        stage: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Fetch paginated articles joined with extractions and total count."""
+        where_clauses: list[str] = []
+        params: list[Any] = []
+
+        if matched_only:
+            where_clauses.append("a.matched = 1")
+
+        if feed_name:
+            where_clauses.append("a.feed_name = ?")
+            params.append(feed_name)
+
+        if stage:
+            where_clauses.append("LOWER(e.stage) = LOWER(?)")
+            params.append(stage)
+
+        if search:
+            pattern = f"%{search.strip()}%"
+            where_clauses.append(
+                """(
+                    a.title LIKE ? OR
+                    a.summary LIKE ? OR
+                    e.company LIKE ? OR
+                    e.sector LIKE ? OR
+                    e.investors LIKE ? OR
+                    e.location LIKE ?
+                )"""
+            )
+            params.extend([pattern] * 6)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        with self.connection() as conn:
+            count_query = f"""
+            SELECT COUNT(*) AS total
+            FROM articles a
+            LEFT JOIN extractions e ON a.id = e.article_id
+            {where_sql}
+            """
+            count_row = conn.execute(count_query, params).fetchone()
+            total = int(count_row["total"]) if count_row else 0
+
+            data_query = f"""
+            SELECT
+                a.id,
+                a.feed_name,
+                a.title,
+                a.link,
+                a.summary,
+                a.published_at,
+                a.first_seen_at,
+                a.matched,
+                a.notified,
+                e.company,
+                e.amount,
+                e.currency,
+                e.stage,
+                e.investors,
+                e.sector,
+                e.location,
+                e.raw_json
+            FROM articles a
+            LEFT JOIN extractions e ON a.id = e.article_id
+            {where_sql}
+            ORDER BY COALESCE(a.published_at, a.first_seen_at) DESC
+            LIMIT ? OFFSET ?
+            """
+            data_params = params + [limit, offset]
+            rows = conn.execute(data_query, data_params).fetchall()
+            results: list[dict[str, Any]] = []
+            for r in rows:
+                item = dict(r)
+                if item.get("investors") and isinstance(item["investors"], str):
+                    try:
+                        item["investors"] = json.loads(item["investors"])
+                    except Exception:
+                        pass
+                results.append(item)
+
+            return results, total
+
+    def get_all_feed_states(self) -> list[dict[str, Any]]:
+        """Fetch all recorded feed states."""
+        with self.connection() as conn:
+            rows = conn.execute("SELECT * FROM feed_state ORDER BY url ASC").fetchall()
+            return [dict(r) for r in rows]

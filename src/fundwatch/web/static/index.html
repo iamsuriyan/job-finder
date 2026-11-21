@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fundwatch — Startup Funding Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['"Geist Mono"', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            mono: {
+              50: '#fafafa',
+              100: '#f4f4f5',
+              200: '#e4e4e7',
+              300: '#d4d4d8',
+              400: '#a1a1aa',
+              500: '#71717a',
+              600: '#52525b',
+              700: '#3f3f46',
+              800: '#27272a',
+              900: '#18181b',
+              950: '#09090b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #3f3f46;
+      border-radius: 3px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: #27272a;
+    }
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: #3f3f46;
+    }
+  </style>
+</head>
+<body class="bg-mono-50 dark:bg-mono-950 text-mono-900 dark:text-mono-100 min-h-screen antialiased transition-colors duration-200">
+  <div id="app" v-cloak class="flex flex-col min-h-screen">
+
+    <!-- Top Navigation Header -->
+    <header class="sticky top-0 z-40 w-full border-b border-mono-200 dark:border-mono-800 bg-mono-50/90 dark:bg-mono-950/90 backdrop-blur-md">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        
+        <!-- Logo and System Status -->
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-mono-900 dark:bg-mono-100 text-mono-100 dark:text-mono-950 flex items-center justify-center font-bold text-lg shadow-sm">
+            FW
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold tracking-tight text-lg">fundwatch</span>
+              <span class="text-xs font-mono font-medium px-2 py-0.5 rounded-full border border-mono-300 dark:border-mono-700 bg-mono-100 dark:bg-mono-900 text-mono-600 dark:text-mono-400">v0.1.0</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-xs text-mono-500 font-mono">
+              <span class="inline-block w-2 h-2 rounded-full" :class="stats.healthy_feeds > 0 ? 'bg-mono-900 dark:bg-mono-100 animate-pulse' : 'bg-mono-400'"></span>
+              <span>{{ stats.healthy_feeds }}/{{ stats.total_feeds }} Feeds Active</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Global Search / Actions -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          
+          <!-- Trigger Poll Button -->
+          <button @click="triggerPoll(false)" :disabled="polling" class="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md border border-mono-300 dark:border-mono-700 bg-white dark:bg-mono-900 hover:bg-mono-100 dark:hover:bg-mono-800 text-mono-900 dark:text-mono-100 shadow-sm transition disabled:opacity-50">
+            <svg v-if="polling" class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span>{{ polling ? 'Polling...' : 'Poll Feeds' }}</span>
+          </button>
+
+          <!-- Export CSV -->
+          <a href="/api/export" download class="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border border-mono-300 dark:border-mono-700 bg-white dark:bg-mono-900 hover:bg-mono-100 dark:hover:bg-mono-800 text-mono-900 dark:text-mono-100 shadow-sm transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+            </svg>
+            <span class="hidden sm:inline">Export CSV</span>
+          </a>
+
+          <!-- Dark / Light Theme Toggle -->
+          <button @click="toggleTheme" class="p-2 rounded-md border border-mono-300 dark:border-mono-700 bg-white dark:bg-mono-900 text-mono-700 dark:text-mono-300 hover:bg-mono-100 dark:hover:bg-mono-800 transition" title="Toggle theme">
+            <svg v-if="isDark" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="5"></circle>
+              <path stroke-linecap="round" d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+            </svg>
+            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+      <!-- Toast Feedback Message -->
+      <div v-if="toastMessage" class="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-lg border border-mono-700 bg-mono-900 text-mono-100 text-xs font-mono shadow-2xl flex items-center gap-3 transition-all">
+        <span>{{ toastMessage }}</span>
+        <button @click="toastMessage = null" class="text-mono-400 hover:text-mono-100">✕</button>
+      </div>
+
+      <!-- KPI Metrics Row -->
+      <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="p-5 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 shadow-sm">
+          <div class="text-xs font-mono font-medium text-mono-500 uppercase tracking-wider">Total Articles</div>
+          <div class="mt-2 text-3xl font-bold font-mono tracking-tight">{{ stats.total.toLocaleString() }}</div>
+          <div class="mt-1 text-xs text-mono-500">Indexed from all sources</div>
+        </div>
+
+        <div class="p-5 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 shadow-sm">
+          <div class="text-xs font-mono font-medium text-mono-500 uppercase tracking-wider">Funding Rounds</div>
+          <div class="mt-2 text-3xl font-bold font-mono tracking-tight">{{ stats.matched.toLocaleString() }}</div>
+          <div class="mt-1 text-xs text-mono-500">Filtered & verified deals</div>
+        </div>
+
+        <div class="p-5 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 shadow-sm">
+          <div class="text-xs font-mono font-medium text-mono-500 uppercase tracking-wider">Alerts Dispatched</div>
+          <div class="mt-2 text-3xl font-bold font-mono tracking-tight">{{ stats.notified.toLocaleString() }}</div>
+          <div class="mt-1 text-xs text-mono-500">Sent via notifiers</div>
+        </div>
+
+        <div class="p-5 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 shadow-sm">
+          <div class="text-xs font-mono font-medium text-mono-500 uppercase tracking-wider">Monitored Feeds</div>
+          <div class="mt-2 text-3xl font-bold font-mono tracking-tight">{{ stats.healthy_feeds }} / {{ stats.total_feeds }}</div>
+          <div class="mt-1 text-xs text-mono-500">100% operational</div>
+        </div>
+      </section>
+
+      <!-- Navigation Tabs -->
+      <div class="border-b border-mono-200 dark:border-mono-800 flex items-center justify-between">
+        <nav class="flex gap-6 -mb-px">
+          <button @click="activeTab = 'rounds'" :class="activeTab === 'rounds' ? 'border-mono-900 dark:border-mono-100 text-mono-900 dark:text-mono-100' : 'border-transparent text-mono-500 hover:text-mono-700 dark:hover:text-mono-300'" class="pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-2">
+            <span>Funding Deals</span>
+            <span class="text-xs font-mono px-2 py-0.5 rounded-full border border-mono-200 dark:border-mono-800 bg-mono-100 dark:bg-mono-900">{{ stats.matched }}</span>
+          </button>
+          <button @click="activeTab = 'all'" :class="activeTab === 'all' ? 'border-mono-900 dark:border-mono-100 text-mono-900 dark:text-mono-100' : 'border-transparent text-mono-500 hover:text-mono-700 dark:hover:text-mono-300'" class="pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-2">
+            <span>All Articles</span>
+            <span class="text-xs font-mono px-2 py-0.5 rounded-full border border-mono-200 dark:border-mono-800 bg-mono-100 dark:bg-mono-900">{{ stats.total }}</span>
+          </button>
+          <button @click="activeTab = 'feeds'" :class="activeTab === 'feeds' ? 'border-mono-900 dark:border-mono-100 text-mono-900 dark:text-mono-100' : 'border-transparent text-mono-500 hover:text-mono-700 dark:hover:text-mono-300'" class="pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-2">
+            <span>Feed Health</span>
+          </button>
+          <button @click="activeTab = 'config'" :class="activeTab === 'config' ? 'border-mono-900 dark:border-mono-100 text-mono-900 dark:text-mono-100' : 'border-transparent text-mono-500 hover:text-mono-700 dark:hover:text-mono-300'" class="pb-3 text-sm font-semibold border-b-2 transition flex items-center gap-2">
+            <span>Config</span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- TAB 1: FUNDING DEALS -->
+      <section v-if="activeTab === 'rounds'" class="space-y-6">
+        
+        <!-- Filters Toolbar -->
+        <div class="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <div class="relative flex-1">
+            <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-mono-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+            <input v-model="searchQuery" @input="debounceFetch" type="text" placeholder="Search company, round, investor, sector, location..." class="w-full pl-10 pr-4 py-2 text-xs font-mono rounded-lg border border-mono-300 dark:border-mono-800 bg-white dark:bg-mono-900 text-mono-900 dark:text-mono-100 focus:outline-none focus:ring-1 focus:ring-mono-500">
+          </div>
+
+          <div class="flex items-center gap-2">
+            <select v-model="selectedFeed" @change="fetchArticles(1)" class="px-3 py-2 text-xs font-mono rounded-lg border border-mono-300 dark:border-mono-800 bg-white dark:bg-mono-900 text-mono-900 dark:text-mono-100 focus:outline-none">
+              <option value="">All Feeds</option>
+              <option v-for="f in config.feeds" :key="f.name" :value="f.name">{{ f.name }}</option>
+            </select>
+
+            <button @click="fetchArticles(1)" class="p-2 rounded-lg border border-mono-300 dark:border-mono-800 bg-white dark:bg-mono-900 hover:bg-mono-100 dark:hover:bg-mono-800 text-mono-700 dark:text-mono-300 transition" title="Refresh list">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="loadingArticles" class="py-20 text-center font-mono text-xs text-mono-500">
+          Loading funding rounds...
+        </div>
+
+        <div v-else-if="articles.length === 0" class="py-20 text-center border border-dashed border-mono-300 dark:border-mono-800 rounded-xl">
+          <p class="font-mono text-sm text-mono-500">No funding deals match your filter criteria.</p>
+        </div>
+
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div v-for="a in articles" :key="a.id" class="flex flex-col justify-between p-5 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/70 hover:border-mono-400 dark:hover:border-mono-600 transition shadow-sm group">
+            
+            <div>
+              <div class="flex items-center justify-between text-xs font-mono text-mono-500 mb-2">
+                <span class="px-2 py-0.5 rounded border border-mono-200 dark:border-mono-800 bg-mono-100 dark:bg-mono-950 font-medium">{{ a.feed_name }}</span>
+                <span>{{ formatDate(a.published_at || a.first_seen_at) }}</span>
+              </div>
+
+              <h3 class="font-bold text-sm leading-snug group-hover:text-mono-900 dark:group-hover:text-white transition">
+                {{ a.title }}
+              </h3>
+
+              <div v-if="a.company || a.amount || a.stage || a.sector" class="mt-3 flex flex-wrap gap-1.5 font-mono text-xs">
+                <span v-if="a.company" class="px-2 py-0.5 rounded border border-mono-400 dark:border-mono-600 bg-mono-900 dark:bg-mono-100 text-mono-100 dark:text-mono-950 font-semibold">{{ a.company }}</span>
+                <span v-if="a.amount" class="px-2 py-0.5 rounded border border-mono-300 dark:border-mono-700 bg-mono-100 dark:bg-mono-800 text-mono-900 dark:text-mono-100 font-bold">{{ a.amount }} {{ a.currency || '' }}</span>
+                <span v-if="a.stage" class="px-2 py-0.5 rounded border border-mono-300 dark:border-mono-700 bg-mono-100 dark:bg-mono-800 text-mono-700 dark:text-mono-300">{{ a.stage }}</span>
+                <span v-if="a.sector" class="px-2 py-0.5 rounded border border-mono-300 dark:border-mono-700 text-mono-600 dark:text-mono-400">{{ a.sector }}</span>
+                <span v-if="a.location" class="px-2 py-0.5 rounded border border-mono-300 dark:border-mono-700 text-mono-600 dark:text-mono-400">{{ a.location }}</span>
+              </div>
+
+              <p v-if="a.summary" class="mt-3 text-xs text-mono-600 dark:text-mono-400 line-clamp-2 leading-relaxed">
+                {{ a.summary }}
+              </p>
+            </div>
+
+            <div class="mt-4 pt-3 border-t border-mono-100 dark:border-mono-800/80 flex items-center justify-between text-xs font-mono">
+              <button @click="openDetails(a)" class="text-mono-600 dark:text-mono-400 hover:text-mono-900 dark:hover:text-white transition">
+                Details →
+              </button>
+              <a :href="a.link" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-mono-900 dark:text-mono-200 hover:underline">
+                <span>Source</span>
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+              </a>
+            </div>
+
+          </div>
+        </div>
+
+        <div v-if="totalPages > 1" class="flex items-center justify-between font-mono text-xs pt-4">
+          <div class="text-mono-500">Showing page {{ currentPage }} of {{ totalPages }} ({{ totalCount }} items)</div>
+          <div class="flex items-center gap-2">
+            <button @click="fetchArticles(currentPage - 1)" :disabled="currentPage <= 1" class="px-3 py-1.5 rounded border border-mono-300 dark:border-mono-800 disabled:opacity-40">Previous</button>
+            <button @click="fetchArticles(currentPage + 1)" :disabled="currentPage >= totalPages" class="px-3 py-1.5 rounded border border-mono-300 dark:border-mono-800 disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: ALL ARTICLES TABLE -->
+      <section v-if="activeTab === 'all'" class="space-y-4">
+        <div class="rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 overflow-hidden shadow-sm">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs font-mono">
+              <thead class="bg-mono-100/60 dark:bg-mono-950/60 border-b border-mono-200 dark:border-mono-800 text-mono-500 uppercase">
+                <tr>
+                  <th class="px-4 py-3 font-medium">Source</th>
+                  <th class="px-4 py-3 font-medium">Title</th>
+                  <th class="px-4 py-3 font-medium">Published</th>
+                  <th class="px-4 py-3 font-medium text-center">Matched</th>
+                  <th class="px-4 py-3 font-medium text-center">Notified</th>
+                  <th class="px-4 py-3 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-mono-100 dark:divide-mono-800/60">
+                <tr v-for="a in allArticles" :key="a.id" class="hover:bg-mono-50 dark:hover:bg-mono-800/30 transition">
+                  <td class="px-4 py-3 font-semibold text-mono-700 dark:text-mono-300 whitespace-nowrap">{{ a.feed_name }}</td>
+                  <td class="px-4 py-3 max-w-md truncate font-sans text-mono-900 dark:text-mono-100">{{ a.title }}</td>
+                  <td class="px-4 py-3 text-mono-500 whitespace-nowrap">{{ formatDate(a.published_at || a.first_seen_at) }}</td>
+                  <td class="px-4 py-3 text-center">
+                    <span v-if="a.matched" class="px-2 py-0.5 rounded text-[10px] border border-mono-400 bg-mono-900 text-white dark:bg-white dark:text-mono-950 font-bold">YES</span>
+                    <span v-else class="text-mono-400">NO</span>
+                  </td>
+                  <td class="px-4 py-3 text-center">
+                    <span v-if="a.notified" class="px-2 py-0.5 rounded text-[10px] border border-mono-300 dark:border-mono-700 bg-mono-200 dark:bg-mono-800">SENT</span>
+                    <span v-else class="text-mono-400">-</span>
+                  </td>
+                  <td class="px-4 py-3 text-right whitespace-nowrap">
+                    <a :href="a.link" target="_blank" rel="noopener noreferrer" class="hover:underline text-mono-900 dark:text-mono-200">Open ↗</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: FEED HEALTH -->
+      <section v-if="activeTab === 'feeds'" class="space-y-4">
+        <div class="rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 overflow-hidden shadow-sm">
+          <table class="w-full text-left text-xs font-mono">
+            <thead class="bg-mono-100/60 dark:bg-mono-950/60 border-b border-mono-200 dark:border-mono-800 text-mono-500 uppercase">
+              <tr>
+                <th class="px-4 py-3 font-medium">Feed Name</th>
+                <th class="px-4 py-3 font-medium">Feed URL</th>
+                <th class="px-4 py-3 font-medium text-center">Status</th>
+                <th class="px-4 py-3 font-medium">Last Successful Poll</th>
+                <th class="px-4 py-3 font-medium text-center">Failures</th>
+                <th class="px-4 py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-mono-100 dark:divide-mono-800/60">
+              <tr v-for="f in feedHealth" :key="f.url" class="hover:bg-mono-50 dark:hover:bg-mono-800/30">
+                <td class="px-4 py-3 font-bold text-mono-900 dark:text-mono-100">{{ f.name }}</td>
+                <td class="px-4 py-3 text-mono-500 max-w-xs truncate">{{ f.url }}</td>
+                <td class="px-4 py-3 text-center">
+                  <span v-if="f.healthy" class="px-2 py-0.5 rounded text-[10px] border border-mono-400 bg-mono-900 text-white dark:bg-white dark:text-mono-950 font-bold">HEALTHY</span>
+                  <span v-else class="px-2 py-0.5 rounded text-[10px] border border-red-500 text-red-500 font-bold">FAILING</span>
+                </td>
+                <td class="px-4 py-3 text-mono-500">{{ f.last_ok_at ? formatDate(f.last_ok_at) : 'Never' }}</td>
+                <td class="px-4 py-3 text-center font-bold">{{ f.consecutive_failures }}</td>
+                <td class="px-4 py-3 text-right">
+                  <button @click="testFeed(f.url)" class="px-2.5 py-1 rounded border border-mono-300 dark:border-mono-700 hover:bg-mono-100 dark:hover:bg-mono-800 transition">Test</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- TAB 4: SYSTEM CONFIG -->
+      <section v-if="activeTab === 'config'" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <div class="p-6 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 space-y-4">
+            <h3 class="font-bold text-sm tracking-tight border-b border-mono-200 dark:border-mono-800 pb-2">Scheduler Parameters</h3>
+            <div class="space-y-2 text-xs font-mono">
+              <div class="flex justify-between py-1 border-b border-mono-100 dark:border-mono-800">
+                <span class="text-mono-500">Poll Interval:</span>
+                <span class="font-bold">{{ config.poll_interval_minutes }} minutes</span>
+              </div>
+              <div class="flex justify-between py-1 border-b border-mono-100 dark:border-mono-800">
+                <span class="text-mono-500">Jitter:</span>
+                <span>±{{ config.jitter_seconds }} seconds</span>
+              </div>
+              <div class="flex justify-between py-1 border-b border-mono-100 dark:border-mono-800">
+                <span class="text-mono-500">Max Article Age:</span>
+                <span>{{ config.max_article_age_days }} days</span>
+              </div>
+              <div class="flex justify-between py-1">
+                <span class="text-mono-500">User Agent:</span>
+                <span class="truncate max-w-[200px]">{{ config.user_agent }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-6 rounded-xl border border-mono-200 dark:border-mono-800 bg-white dark:bg-mono-900/60 space-y-4">
+            <h3 class="font-bold text-sm tracking-tight border-b border-mono-200 dark:border-mono-800 pb-2">Active Notifiers</h3>
+            <div class="space-y-2 text-xs font-mono">
+              <div v-for="n in config.notifiers" :key="n.type" class="flex justify-between py-1 border-b border-mono-100 dark:border-mono-800">
+                <span class="capitalize">{{ n.type }}:</span>
+                <span :class="n.enabled ? 'font-bold text-mono-900 dark:text-mono-100' : 'text-mono-400'">{{ n.enabled ? 'ENABLED' : 'DISABLED' }}</span>
+              </div>
+            </div>
+            <div class="pt-2">
+              <button @click="testNotifiers" class="w-full py-2 text-xs font-mono font-medium rounded-lg border border-mono-300 dark:border-mono-700 hover:bg-mono-100 dark:hover:bg-mono-800 transition">
+                Send Test Alert to Notifiers
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Slide-over Drawer for Article Details -->
+      <div v-if="selectedArticle" class="fixed inset-0 z-50 flex justify-end bg-mono-950/60 backdrop-blur-xs transition-opacity" @click.self="selectedArticle = null">
+        <div class="w-full max-w-lg bg-white dark:bg-mono-900 border-l border-mono-200 dark:border-mono-800 h-full p-6 overflow-y-auto space-y-6 shadow-2xl">
+          
+          <div class="flex items-center justify-between border-b border-mono-200 dark:border-mono-800 pb-4">
+            <span class="text-xs font-mono text-mono-500 uppercase">{{ selectedArticle.feed_name }}</span>
+            <button @click="selectedArticle = null" class="text-mono-400 hover:text-mono-900 dark:hover:text-mono-100 text-sm">✕</button>
+          </div>
+
+          <div>
+            <h2 class="text-lg font-bold leading-snug">{{ selectedArticle.title }}</h2>
+            <div class="mt-2 text-xs font-mono text-mono-500">
+              Published: {{ selectedArticle.published_at || selectedArticle.first_seen_at }}
+            </div>
+          </div>
+
+          <div v-if="selectedArticle.company || selectedArticle.amount" class="p-4 rounded-xl border border-mono-200 dark:border-mono-800 bg-mono-50 dark:bg-mono-950 space-y-2 text-xs font-mono">
+            <div class="font-bold uppercase tracking-wider text-mono-400 text-[10px] mb-2">Extracted Data</div>
+            <div v-if="selectedArticle.company" class="flex justify-between"><span class="text-mono-500">Company:</span> <span class="font-bold">{{ selectedArticle.company }}</span></div>
+            <div v-if="selectedArticle.amount" class="flex justify-between"><span class="text-mono-500">Amount:</span> <span class="font-bold">{{ selectedArticle.amount }} {{ selectedArticle.currency }}</span></div>
+            <div v-if="selectedArticle.stage" class="flex justify-between"><span class="text-mono-500">Stage:</span> <span>{{ selectedArticle.stage }}</span></div>
+            <div v-if="selectedArticle.sector" class="flex justify-between"><span class="text-mono-500">Sector:</span> <span>{{ selectedArticle.sector }}</span></div>
+            <div v-if="selectedArticle.location" class="flex justify-between"><span class="text-mono-500">Location:</span> <span>{{ selectedArticle.location }}</span></div>
+            <div v-if="selectedArticle.investors && selectedArticle.investors.length" class="flex justify-between"><span class="text-mono-500">Investors:</span> <span>{{ selectedArticle.investors.join(', ') }}</span></div>
+          </div>
+
+          <div>
+            <h4 class="text-xs font-mono font-medium text-mono-500 uppercase mb-2">Summary</h4>
+            <p class="text-xs text-mono-700 dark:text-mono-300 leading-relaxed">{{ selectedArticle.summary || 'No summary available.' }}</p>
+          </div>
+
+          <div v-if="selectedArticle.raw_json">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="text-xs font-mono font-medium text-mono-500 uppercase">Raw Extraction JSON</h4>
+              <button @click="copyJson(selectedArticle.raw_json)" class="text-xs font-mono text-mono-400 hover:text-mono-100">Copy</button>
+            </div>
+            <pre class="p-3 rounded-lg border border-mono-200 dark:border-mono-800 bg-mono-100 dark:bg-mono-950 text-[11px] font-mono overflow-x-auto text-mono-800 dark:text-mono-200">{{ selectedArticle.raw_json }}</pre>
+          </div>
+
+          <div class="pt-4 border-t border-mono-200 dark:border-mono-800">
+            <a :href="selectedArticle.link" target="_blank" rel="noopener noreferrer" class="block w-full text-center py-2.5 rounded-lg border border-mono-900 dark:border-mono-100 bg-mono-900 dark:bg-mono-100 text-mono-100 dark:text-mono-900 text-xs font-mono font-bold hover:opacity-90 transition">
+              Open Original Article ↗
+            </a>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-mono-200 dark:border-mono-800 py-6 text-center text-xs font-mono text-mono-500">
+      fundwatch · Clean monochrome startup funding alerts
+    </footer>
+
+  </div>
+
+  <script>
+    const { createApp, ref, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const isDark = ref(true);
+        const activeTab = ref('rounds');
+        const stats = ref({ total: 0, matched: 0, notified: 0, total_feeds: 5, healthy_feeds: 5 });
+        const articles = ref([]);
+        const allArticles = ref([]);
+        const feedHealth = ref([]);
+        const config = ref({ feeds: [], notifiers: [] });
+        const loadingArticles = ref(false);
+        const polling = ref(false);
+        const searchQuery = ref('');
+        const selectedFeed = ref('');
+        const currentPage = ref(1);
+        const totalPages = ref(1);
+        const totalCount = ref(0);
+        const selectedArticle = ref(null);
+        const toastMessage = ref(null);
+
+        let debounceTimer = null;
+
+        const showToast = (msg) => {
+          toastMessage.value = msg;
+          setTimeout(() => { if (toastMessage.value === msg) toastMessage.value = null; }, 5000);
+        };
+
+        const toggleTheme = () => {
+          isDark.value = !isDark.value;
+          document.documentElement.classList.toggle('dark', isDark.value);
+        };
+
+        const formatDate = (isoString) => {
+          if (!isoString) return 'N/A';
+          try {
+            return isoString.split('T')[0];
+          } catch(e) {
+            return isoString;
+          }
+        };
+
+        const fetchStats = async () => {
+          try {
+            const res = await fetch('/api/stats');
+            if (res.ok) {
+              stats.value = await res.json();
+            }
+          } catch(err) {
+            console.error('Failed to load stats', err);
+          }
+        };
+
+        const fetchArticles = async (page = 1) => {
+          loadingArticles.value = true;
+          currentPage.value = page;
+          try {
+            const params = new URLSearchParams({
+              page: page.toString(),
+              limit: '24',
+              matched_only: 'true',
+            });
+            if (searchQuery.value) params.append('search', searchQuery.value);
+            if (selectedFeed.value) params.append('feed', selectedFeed.value);
+
+            const res = await fetch(`/api/articles?${params.toString()}`);
+            if (res.ok) {
+              const data = await res.json();
+              articles.value = data.items;
+              totalPages.value = data.total_pages;
+              totalCount.value = data.total;
+            }
+          } catch(err) {
+            console.error('Failed to load articles', err);
+          } finally {
+            loadingArticles.value = false;
+          }
+        };
+
+        const fetchAllArticles = async () => {
+          try {
+            const res = await fetch('/api/articles?limit=50&matched_only=false');
+            if (res.ok) {
+              const data = await res.json();
+              allArticles.value = data.items;
+            }
+          } catch(err) {
+            console.error(err);
+          }
+        };
+
+        const fetchFeeds = async () => {
+          try {
+            const res = await fetch('/api/feeds');
+            if (res.ok) {
+              feedHealth.value = await res.json();
+            }
+          } catch(err) {
+            console.error(err);
+          }
+        };
+
+        const fetchConfig = async () => {
+          try {
+            const res = await fetch('/api/config');
+            if (res.ok) {
+              config.value = await res.json();
+            }
+          } catch(err) {
+            console.error(err);
+          }
+        };
+
+        const debounceFetch = () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            fetchArticles(1);
+          }, 300);
+        };
+
+        const triggerPoll = async (dryRun = false) => {
+          polling.value = true;
+          try {
+            const res = await fetch(`/api/poll?dry_run=${dryRun}`, { method: 'POST' });
+            if (res.ok) {
+              const result = await res.json();
+              showToast(`Poll complete: ${result.fetched} fetched, ${result.new} new, ${result.matched} matched.`);
+              await fetchStats();
+              await fetchArticles(1);
+              await fetchAllArticles();
+              await fetchFeeds();
+            } else {
+              showToast('Poll request failed');
+            }
+          } catch(err) {
+            showToast('Error during poll cycle: ' + err.message);
+          } finally {
+            polling.value = false;
+          }
+        };
+
+        const testFeed = async (url) => {
+          try {
+            showToast(`Testing feed ${url}...`);
+            const res = await fetch('/api/feeds/test', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ url })
+            });
+            const data = await res.json();
+            if (data.ok) {
+              showToast(`Feed OK: ${data.entries} entries found.`);
+            } else {
+              showToast(`Feed Error: ${data.error}`);
+            }
+          } catch(err) {
+            showToast('Failed to test feed');
+          }
+        };
+
+        const testNotifiers = async () => {
+          try {
+            showToast('Sending test alert to notifiers...');
+            const res = await fetch('/api/test-notify', { method: 'POST' });
+            const data = await res.json();
+            showToast(data.ok ? 'Test alert delivered successfully!' : 'Delivery warning: ' + data.message);
+          } catch(err) {
+            showToast('Failed to trigger test alert');
+          }
+        };
+
+        const openDetails = (article) => {
+          selectedArticle.value = article;
+        };
+
+        const copyJson = (text) => {
+          navigator.clipboard.writeText(text);
+          showToast('JSON copied to clipboard!');
+        };
+
+        onMounted(async () => {
+          await fetchStats();
+          await fetchArticles(1);
+          await fetchAllArticles();
+          await fetchFeeds();
+          await fetchConfig();
+        });
+
+        return {
+          isDark,
+          activeTab,
+          stats,
+          articles,
+          allArticles,
+          feedHealth,
+          config,
+          loadingArticles,
+          polling,
+          searchQuery,
+          selectedFeed,
+          currentPage,
+          totalPages,
+          totalCount,
+          selectedArticle,
+          toastMessage,
+          toggleTheme,
+          formatDate,
+          fetchArticles,
+          debounceFetch,
+          triggerPoll,
+          testFeed,
+          testNotifiers,
+          openDetails,
+          copyJson,
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

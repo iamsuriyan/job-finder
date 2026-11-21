@@ -314,5 +314,32 @@ def stats(
         console.print(d_table)
 
 
+@app.command(name="ui")
+def ui(
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host address to bind to"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to listen on"),
+) -> None:
+    """Launch the clean monochrome web dashboard."""
+    import uvicorn
+
+    from fundwatch.config import load_config
+    from fundwatch.db import Database
+    from fundwatch.web.app import create_app
+
+    try:
+        settings = load_config(config_path=config, enforce_secrets=False)
+    except Exception as exc:
+        console.print(f"[bold red]Configuration error:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    configure_logging(settings.log_level)
+    db = Database(settings.db_path)
+    fastapi_app = create_app(settings=settings, db=db)
+
+    console.print(f"[bold green]Starting fundwatch dashboard at http://{host}:{port}[/bold green]")
+    uvicorn.run(fastapi_app, host=host, port=port, log_level="warning")
+
+
 if __name__ == "__main__":
     app()

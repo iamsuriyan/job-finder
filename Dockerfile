@@ -27,6 +27,8 @@ RUN mkdir -p /app/data && chown -R appuser:appgroup /app
 
 USER appuser
 
+EXPOSE 8000
+
 VOLUME ["/app/data"]
 
 CMD ["python", "-m", "fundwatch", "run"]

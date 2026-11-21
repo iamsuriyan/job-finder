@@ -145,6 +145,7 @@ llm_extraction:
 
 | Command | Description |
 |---|---|
+| `fundwatch ui` | Launches the clean monochrome web dashboard at `http://127.0.0.1:8000`. |
 | `fundwatch run` | Runs continuous monitoring loop with configured interval & jitter. |
 | `fundwatch once` | Runs a single poll cycle and exits (ideal for cron / CI). Supports `--dry-run` and `--no-bootstrap`. |
 | `fundwatch check-feeds` | Tests all configured feed URLs, validates HTTP status and latest entry. |
