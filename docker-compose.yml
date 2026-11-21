@@ -1,0 +1,14 @@
+services:
+  fundwatch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fundwatch
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["python", "-m", "fundwatch", "run"]

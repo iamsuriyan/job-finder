@@ -1,0 +1,55 @@
+name: Poll Startup Funding Feeds
+
+on:
+  schedule:
+    # Run every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # State Persistence Strategy:
+      # We use actions/cache to persist the SQLite DB across scheduled runs.
+      # Tradeoff note:
+      # - actions/cache is lightweight and doesn't pollute git history, but caches can expire after 7 days of inactivity.
+      # - For mission-critical durability, persist the SQLite database to S3/Cloud Storage,
+      #   or commit the DB file to an orphaned 'state' branch.
+      - name: Restore SQLite Database Cache
+        uses: actions/cache@v4
+        with:
+          path: data/fundwatch.db
+          key: fundwatch-db-${{ github.run_id }}
+          restore-keys: |
+            fundwatch-db-
+
+      - name: Install dependencies
+        run: |
+          pip install .
+
+      - name: Run Single Poll Cycle
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DB_PATH: ./data/fundwatch.db
+          LOG_LEVEL: INFO
+        run: |
+          python -m fundwatch once

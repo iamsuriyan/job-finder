@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Sample Tech News</title>
+    <link>https://example.com</link>
+    <description>Sample startup news feed</description>
+    <item>
+      <title>Robotics Startup Raises $15M in Series A</title>
+      <link>https://example.com/item-1</link>
+      <guid>https://example.com/item-1</guid>
+      <description>&lt;p&gt;Robotics company &lt;b&gt;BotCo&lt;/b&gt; has secured $15 million in Series A funding led by VC Ventures.&lt;/p&gt;</description>
+      <pubDate>Fri, 20 Nov 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Opinion: The Future of Quantum Computing</title>
+      <link>https://example.com/item-2</link>
+      <guid>https://example.com/item-2</guid>
+      <description>Quantum computers might reshape cryptography.</description>
+      <pubDate>Thu, 19 Nov 2026 09:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Fintech App Closes $5M Seed Round</title>
+      <link>https://example.com/item-3</link>
+      <guid>https://example.com/item-3</guid>
+      <description>Payments startup PayQuick bags $5M seed round from angel investors.</description>
+      <pubDate>Wed, 18 Nov 2026 14:15:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

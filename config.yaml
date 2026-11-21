@@ -1,0 +1,56 @@
+poll_interval_minutes: 20
+jitter_seconds: 60
+request_timeout_seconds: 15
+max_items_per_feed: 50
+max_article_age_days: 3
+user_agent: "fundwatch/0.1 (personal funding alert bot)"
+
+feeds:
+  - name: Entrackr
+    url: https://entrackr.com/rss
+  - name: Inc42
+    url: https://inc42.com/feed/
+  - name: YourStory
+    url: https://yourstory.com/feed
+  - name: Crunchbase News
+    url: https://news.crunchbase.com/feed/
+  - name: TechCrunch Startups
+    url: https://techcrunch.com/category/startups/feed/
+
+filters:
+  funding_keywords:
+    - raises
+    - raised
+    - funding
+    - seed round
+    - pre-seed
+    - pre-series a
+    - series a
+    - series b
+    - series c
+    - bags
+    - secures
+    - closes
+  match_in_summary: true
+  sector_keywords: []
+  geo_keywords: []
+  exclude_keywords:
+    - webinar
+    - podcast
+    - opinion
+
+notifiers:
+  - type: telegram
+    enabled: true
+  - type: slack
+    enabled: false
+  - type: ntfy
+    enabled: false
+    topic: my-fundwatch-topic
+  - type: email
+    enabled: false
+
+llm_extraction:
+  enabled: false
+  model: "claude-sonnet-5-5"
+  max_tokens: 400
