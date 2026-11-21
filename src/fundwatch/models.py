@@ -48,6 +48,38 @@ class Extraction(BaseModel):
     emails: list[dict[str, Any]] | None = None
 
 
+class CandidateProfile(BaseModel):
+    """Candidate profile information parsed from resume for job enquiry generation."""
+
+    name: str = "Suriyan Dhanapal"
+    title: str = "Generative AI | Product Engineer | Backend, Systems & Infrastructure"
+    email: str = "suriyandhanapal@gmail.com"
+    phone: str = "+91 81100 44608"
+    location: str = "Coimbatore, India"
+    portfolio: str = "https://iamsuriyan.github.io/Portfolio"
+    github: str = "https://github.com/iamsuriyan"
+    linkedin: str = "https://linkedin.com/in/suriyan-d-74514223a"
+    resume_path: str = "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
+
+
+class DraftEmail(BaseModel):
+    """Cold job enquiry email draft pending or completed human review."""
+
+    id: str
+    article_id: str | None = None
+    company: str
+    recipient_name: str | None = None
+    recipient_email: str | None = None
+    subject: str
+    body: str
+    resume_path: str = "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
+    attach_resume: bool = True
+    status: str = "draft"  # "draft", "sent", "failed"
+    created_at: str  # ISO8601 UTC
+    sent_at: str | None = None  # ISO8601 UTC
+    error_message: str | None = None
+
+
 class FilterConfig(BaseModel):
     """Keyword and topic filtering configuration."""
 
@@ -94,6 +126,17 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     find_founder_emails: bool = True
 
+    # Candidate profile & Resume
+    resume_path: str = "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
+    candidate_name: str = "Suriyan Dhanapal"
+    candidate_title: str = "Generative AI | Product Engineer | Backend, Systems & Infrastructure"
+    candidate_email: str = "suriyandhanapal@gmail.com"
+    candidate_phone: str = "+91 81100 44608"
+    candidate_location: str = "Coimbatore, India"
+    candidate_portfolio: str = "https://iamsuriyan.github.io/Portfolio"
+    candidate_github: str = "https://github.com/iamsuriyan"
+    candidate_linkedin: str = "https://linkedin.com/in/suriyan-d-74514223a"
+
     # Secrets overlayed from environment
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
@@ -103,6 +146,7 @@ class Settings(BaseModel):
     smtp_port: int = 587
     smtp_user: str | None = None
     smtp_password: str | None = None
+    smtp_from: str | None = None
     email_to: str | None = None
     anthropic_api_key: str | None = None
     hunter_api_key: str | None = None

@@ -341,5 +341,203 @@ def ui(
     uvicorn.run(fastapi_app, host=host, port=port, log_level="warning")
 
 
+# -----------------------------------------------------------------------------
+# Outbox & Human-Review Cold Outreach CLI Commands
+# -----------------------------------------------------------------------------
+
+outbox_app = typer.Typer(
+    name="outbox",
+    help="Human-in-the-loop cold outreach outbox and draft review.",
+)
+app.add_typer(outbox_app)
+
+
+@outbox_app.command(name="list")
+def outbox_list(
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
+    status: str = typer.Option(
+        None, "--status", "-s", help="Filter by status (draft, sent, failed)"
+    ),
+) -> None:
+    """List pending and sent cold email drafts in the outbox."""
+    from fundwatch.config import load_config
+    from fundwatch.db import Database
+
+    settings = load_config(config_path=config, enforce_secrets=False)
+    db = Database(settings.db_path)
+    drafts = db.list_drafts(status=status)
+    stats = db.get_draft_stats()
+
+    console.print(
+        f"[bold]Outbox Summary:[/bold] Total: {stats['total']} | "
+        f"[yellow]Drafts (Pending Review): {stats['draft']}[/yellow] | "
+        f"[green]Sent: {stats['sent']}[/green] | "
+        f"[red]Failed: {stats['failed']}[/red]\n"
+    )
+
+    if not drafts:
+        console.print("[dim]No drafts found in outbox.[/dim]")
+        return
+
+    table = Table(title="Outbox Drafts")
+    table.add_column("Draft ID", style="cyan")
+    table.add_column("Company", style="bold")
+    table.add_column("Recipient")
+    table.add_column("Subject")
+    table.add_column("Status")
+    table.add_column("Resume Attached")
+
+    for d in drafts:
+        status_color = (
+            "yellow" if d.status == "draft" else ("green" if d.status == "sent" else "red")
+        )
+        recip = f"{d.recipient_name or ''} <{d.recipient_email or 'NO EMAIL'}>".strip()
+        table.add_row(
+            d.id,
+            d.company,
+            recip,
+            d.subject[:40] + ("..." if len(d.subject) > 40 else ""),
+            f"[{status_color}]{d.status.upper()}[/{status_color}]",
+            "YES" if d.attach_resume else "NO",
+        )
+
+    console.print(table)
+
+
+@outbox_app.command(name="generate")
+def outbox_generate(
+    article_id: str = typer.Argument(..., help="Article ID to generate draft for"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
+    force: bool = typer.Option(False, "--force", "-f", help="Regenerate even if draft exists"),
+) -> None:
+    """Generate a cold job enquiry email draft for a funded startup article."""
+    from fundwatch.config import load_config
+    from fundwatch.db import Database
+    from fundwatch.outreach import generate_job_enquiry
+
+    settings = load_config(config_path=config, enforce_secrets=False)
+    db = Database(settings.db_path)
+
+    article = db.get_article(article_id)
+    if not article:
+        console.print(f"[bold red]Article {article_id} not found in database.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if not force:
+        existing = db.get_draft_by_article(article_id)
+        if existing:
+            console.print(
+                f"[yellow]Draft already exists: {existing.id} (Status: {existing.status})[/yellow]"
+            )
+            console.print("Use --force to regenerate.")
+            return
+
+    extraction = db.get_extraction(article_id)
+    draft = generate_job_enquiry(article, extraction, settings)
+    db.create_draft(draft)
+
+    console.print(f"[bold green]Created draft {draft.id} for {draft.company}![/bold green]")
+    console.print(f"Recipient: {draft.recipient_name} <{draft.recipient_email}>")
+    console.print(f"Subject: {draft.subject}")
+    console.print(
+        "[dim]Status is 'DRAFT'. It will NOT be sent until you review and confirm sending.[/dim]"
+    )
+
+
+@outbox_app.command(name="show")
+def outbox_show(
+    draft_id: str = typer.Argument(..., help="Draft ID to view"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
+) -> None:
+    """View draft details and body preview."""
+    from fundwatch.config import load_config
+    from fundwatch.db import Database
+
+    settings = load_config(config_path=config, enforce_secrets=False)
+    db = Database(settings.db_path)
+    draft = db.get_draft(draft_id)
+    if not draft:
+        console.print(f"[bold red]Draft {draft_id} not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[bold cyan]Draft ID:[/bold cyan] {draft.id}")
+    console.print(f"[bold]Company:[/bold] {draft.company}")
+    console.print(f"[bold]Recipient:[/bold] {draft.recipient_name} <{draft.recipient_email}>")
+    console.print(f"[bold]Subject:[/bold] {draft.subject}")
+    console.print(f"[bold]Status:[/bold] {draft.status.upper()}")
+    console.print(
+        f"[bold]Resume Attachment:[/bold] {draft.resume_path} (Attached: {draft.attach_resume})"
+    )
+    if draft.sent_at:
+        console.print(f"[bold]Sent At:[/bold] {draft.sent_at}")
+    if draft.error_message:
+        console.print(f"[bold red]Error:[/bold red] {draft.error_message}")
+    console.print("\n[bold]--- EMAIL BODY ---[/bold]")
+    console.print(draft.body)
+    console.print("[bold]------------------[/bold]")
+
+
+@outbox_app.command(name="send")
+def outbox_send(
+    draft_id: str = typer.Argument(..., help="Draft ID to send"),
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip human confirmation prompt"),
+) -> None:
+    """HUMAN REVIEW SEND: Send a reviewed draft via SMTP."""
+    from fundwatch.config import load_config
+    from fundwatch.db import Database
+    from fundwatch.outreach import send_outreach_email
+
+    settings = load_config(config_path=config, enforce_secrets=False)
+    db = Database(settings.db_path)
+    draft = db.get_draft(draft_id)
+    if not draft:
+        console.print(f"[bold red]Draft {draft_id} not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if not draft.recipient_email:
+        console.print("[bold red]Cannot send: Recipient email is empty.[/bold red]")
+        raise typer.Exit(code=1)
+
+    # Human Review Confirmation Gate
+    if not yes:
+        recip_display = f"{draft.recipient_name} <{draft.recipient_email}>"
+        confirm = typer.confirm(
+            f"Are you sure you want to send this email to {recip_display} via SMTP?"
+        )
+        if not confirm:
+            console.print("[yellow]Send cancelled by user.[/yellow]")
+            return
+
+    try:
+        send_outreach_email(draft, settings)
+        db.mark_draft_sent(draft.id)
+        msg_ok = (
+            f"[bold green]Successfully dispatched draft {draft.id} to "
+            f"{draft.recipient_email}![/bold green]"
+        )
+        console.print(msg_ok)
+    except Exception as exc:
+        db.mark_draft_failed(draft.id, str(exc))
+        console.print(f"[bold red]Failed to send email:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+@outbox_app.command(name="resume")
+def outbox_resume(
+    config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
+) -> None:
+    """Verify candidate resume path and status."""
+    from fundwatch.config import load_config
+    from fundwatch.outreach import check_resume
+
+    settings = load_config(config_path=config, enforce_secrets=False)
+    res = check_resume(settings.resume_path)
+    if res["exists"]:
+        console.print(f"[bold green]Resume found:[/bold green] {res['path']} ({res['size_kb']} KB)")
+    else:
+        console.print(f"[bold red]Resume NOT found at:[/bold red] {res['path']}")
+
+
 if __name__ == "__main__":
     app()

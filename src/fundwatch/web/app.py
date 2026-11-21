@@ -5,17 +5,20 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import smtplib
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from fundwatch import __version__
 from fundwatch.db import Database
 from fundwatch.fetcher import inspect_feed
 from fundwatch.models import Settings
 from fundwatch.notifiers import build_notifiers
+from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
 from fundwatch.pipeline import run_cycle
 from fundwatch.web.templates import DASHBOARD_HTML
 
@@ -166,7 +169,213 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             "llm_extraction_enabled": settings.llm_extraction.enabled,
             "llm_model": settings.llm_extraction.model,
             "db_path": settings.db_path,
+            "candidate": {
+                "name": settings.candidate_name,
+                "title": settings.candidate_title,
+                "email": settings.candidate_email,
+                "phone": settings.candidate_phone,
+                "location": settings.candidate_location,
+                "portfolio": settings.candidate_portfolio,
+                "github": settings.candidate_github,
+                "linkedin": settings.candidate_linkedin,
+                "resume_path": settings.resume_path,
+            },
+            "smtp": {
+                "configured": bool(
+                    settings.smtp_host and settings.smtp_user and settings.smtp_password
+                ),
+                "host": settings.smtp_host,
+                "port": settings.smtp_port,
+                "user": settings.smtp_user,
+                "from_email": settings.smtp_from or settings.smtp_user or settings.candidate_email,
+            },
         }
+
+    # -------------------------------------------------------------------------
+    # Outbox & Human-in-the-Loop Job Enquiry Endpoints
+    # -------------------------------------------------------------------------
+
+    @app.get("/api/outbox")
+    def list_outbox_drafts(
+        status: str | None = Query(None),
+        limit: int = Query(100, ge=1, le=500),
+    ) -> dict[str, Any]:
+        """List email drafts and outbox statistics."""
+        drafts = db.list_drafts(status=status, limit=limit)
+        draft_stats = db.get_draft_stats()
+        return {
+            "items": [d.model_dump() for d in drafts],
+            "stats": draft_stats,
+        }
+
+    @app.get("/api/outbox/resume/status")
+    def get_resume_status() -> dict[str, Any]:
+        """Check status and metadata for candidate's resume file."""
+        return check_resume(settings.resume_path)
+
+    @app.get("/api/outbox/resume/download")
+    def download_resume() -> FileResponse:
+        """Download or view the candidate's resume PDF."""
+        p = Path(settings.resume_path)
+        if not p.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Resume file not found at {settings.resume_path}",
+            )
+        return FileResponse(
+            str(p),
+            media_type="application/pdf",
+            filename=f"{settings.candidate_name.replace(' ', '_')}_Resume.pdf",
+        )
+
+    @app.get("/api/outbox/{draft_id}")
+    def get_draft_by_id(draft_id: str) -> dict[str, Any]:
+        """Get single draft by ID."""
+        draft = db.get_draft(draft_id)
+        if not draft:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+        return draft.model_dump()
+
+    @app.post("/api/outbox/generate/{article_id}")
+    def generate_draft_for_article(
+        article_id: str,
+        force: bool = Query(False),
+    ) -> dict[str, Any]:
+        """Generate a personalized job enquiry draft for a funded startup article."""
+        article = db.get_article(article_id)
+        if not article:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found")
+
+        # Check if already generated unless force=True
+        if not force:
+            existing = db.get_draft_by_article(article_id)
+            if existing:
+                return existing.model_dump()
+
+        extraction = db.get_extraction(article_id)
+        draft = generate_job_enquiry(article, extraction, settings)
+        db.create_draft(draft)
+        return draft.model_dump()
+
+    @app.put("/api/outbox/{draft_id}")
+    def update_draft_by_id(
+        draft_id: str,
+        payload: dict[str, Any] = Body(...),
+    ) -> dict[str, Any]:
+        """Update draft subject, body, recipient, or attachment prior to sending."""
+        updated = db.update_draft(
+            draft_id=draft_id,
+            company=payload.get("company"),
+            recipient_name=payload.get("recipient_name"),
+            recipient_email=payload.get("recipient_email"),
+            subject=payload.get("subject"),
+            body=payload.get("body"),
+            resume_path=payload.get("resume_path"),
+            attach_resume=payload.get("attach_resume"),
+        )
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+        return updated.model_dump()
+
+    @app.delete("/api/outbox/{draft_id}")
+    def delete_draft_by_id(draft_id: str) -> dict[str, Any]:
+        """Delete an outbox draft."""
+        success = db.delete_draft(draft_id)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+        return {"ok": True, "draft_id": draft_id}
+
+    @app.post("/api/outbox/{draft_id}/send")
+    def send_draft_via_smtp(draft_id: str) -> dict[str, Any]:
+        """HUMAN-IN-THE-LOOP ACTION: Dispatch an email draft via SMTP."""
+        draft = db.get_draft(draft_id)
+        if not draft:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+
+        if not draft.recipient_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Recipient email address is required. Please edit the draft before sending.",
+            )
+
+        try:
+            send_outreach_email(draft, settings, timeout=settings.request_timeout_seconds)
+            db.mark_draft_sent(draft.id)
+            return {
+                "ok": True,
+                "status": "sent",
+                "draft_id": draft.id,
+                "recipient": draft.recipient_email,
+                "message": f"Job enquiry successfully dispatched to {draft.recipient_email}!",
+            }
+        except Exception as exc:
+            err_msg = str(exc)
+            logger.error("Failed to send draft %s: %s", draft.id, err_msg)
+            db.mark_draft_failed(draft.id, err_msg)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=err_msg,
+            ) from exc
+
+    @app.post("/api/outbox/smtp/config")
+    def update_smtp_config(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Configure runtime SMTP settings and candidate profile."""
+        if "smtp_host" in payload:
+            settings.smtp_host = str(payload["smtp_host"]).strip() or None
+        if "smtp_port" in payload:
+            try:
+                settings.smtp_port = int(payload["smtp_port"])
+            except (ValueError, TypeError):
+                pass
+        if "smtp_user" in payload:
+            settings.smtp_user = str(payload["smtp_user"]).strip() or None
+        if "smtp_password" in payload:
+            settings.smtp_password = str(payload["smtp_password"]).strip() or None
+        if "smtp_from" in payload:
+            settings.smtp_from = str(payload["smtp_from"]).strip() or None
+        if "candidate_name" in payload:
+            settings.candidate_name = str(payload["candidate_name"]).strip()
+        if "candidate_email" in payload:
+            settings.candidate_email = str(payload["candidate_email"]).strip()
+        if "resume_path" in payload:
+            settings.resume_path = str(payload["resume_path"]).strip()
+
+        return {
+            "ok": True,
+            "smtp_configured": bool(
+                settings.smtp_host and settings.smtp_user and settings.smtp_password
+            ),
+            "smtp_host": settings.smtp_host,
+            "smtp_port": settings.smtp_port,
+            "smtp_user": settings.smtp_user,
+            "candidate_name": settings.candidate_name,
+            "candidate_email": settings.candidate_email,
+            "resume_path": settings.resume_path,
+        }
+
+    @app.post("/api/outbox/smtp/test")
+    def test_smtp_connection() -> dict[str, Any]:
+        """Test SMTP connection and credentials without sending an email."""
+        if not settings.smtp_host:
+            return {"ok": False, "error": "SMTP_HOST is not configured."}
+
+        port = settings.smtp_port or 587
+        try:
+            with smtplib.SMTP(settings.smtp_host, port, timeout=10.0) as server:
+                try:
+                    server.starttls()
+                except smtplib.SMTPNotSupportedError:
+                    pass
+                if settings.smtp_user and settings.smtp_password:
+                    server.login(settings.smtp_user, settings.smtp_password)
+            return {
+                "ok": True,
+                "message": (
+                    f"Successfully connected and authenticated with {settings.smtp_host}:{port}!"
+                ),
+            }
+        except Exception as exc:
+            return {"ok": False, "error": f"SMTP connection failed: {exc}"}
 
     @app.post("/api/poll")
     def trigger_poll(dry_run: bool = Query(False)) -> dict[str, Any]:

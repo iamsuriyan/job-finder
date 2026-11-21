@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fundwatch.models import Article, Extraction
+from fundwatch.models import Article, DraftEmail, Extraction
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS articles (
@@ -49,8 +49,26 @@ CREATE TABLE IF NOT EXISTS feed_state (
   consecutive_failures INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS drafts (
+  id              TEXT PRIMARY KEY,
+  article_id      TEXT,
+  company         TEXT NOT NULL,
+  recipient_name  TEXT,
+  recipient_email TEXT,
+  subject         TEXT NOT NULL,
+  body            TEXT NOT NULL,
+  resume_path     TEXT,
+  attach_resume   INTEGER NOT NULL DEFAULT 1,
+  status          TEXT NOT NULL DEFAULT 'draft',
+  created_at      TEXT NOT NULL,
+  sent_at         TEXT,
+  error_message   TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_articles_first_seen ON articles(first_seen_at);
 CREATE INDEX IF NOT EXISTS idx_articles_matched ON articles(matched);
+CREATE INDEX IF NOT EXISTS idx_drafts_status ON drafts(status);
+CREATE INDEX IF NOT EXISTS idx_drafts_created ON drafts(created_at);
 """
 
 
@@ -509,3 +527,226 @@ class Database:
         with self.connection() as conn:
             rows = conn.execute("SELECT * FROM feed_state ORDER BY url ASC").fetchall()
             return [dict(r) for r in rows]
+
+    # ---------------------------------------------------------
+    # Outbox / Cold Job Outreach Email Drafts
+    # ---------------------------------------------------------
+
+    def create_draft(self, draft: DraftEmail) -> str:
+        """Create or update a cold email draft."""
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO drafts (
+                    id, article_id, company, recipient_name, recipient_email,
+                    subject, body, resume_path, attach_resume, status,
+                    created_at, sent_at, error_message
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    article_id = excluded.article_id,
+                    company = excluded.company,
+                    recipient_name = excluded.recipient_name,
+                    recipient_email = excluded.recipient_email,
+                    subject = excluded.subject,
+                    body = excluded.body,
+                    resume_path = excluded.resume_path,
+                    attach_resume = excluded.attach_resume,
+                    status = excluded.status,
+                    sent_at = excluded.sent_at,
+                    error_message = excluded.error_message
+                """,
+                (
+                    draft.id,
+                    draft.article_id,
+                    draft.company,
+                    draft.recipient_name,
+                    draft.recipient_email,
+                    draft.subject,
+                    draft.body,
+                    draft.resume_path,
+                    1 if draft.attach_resume else 0,
+                    draft.status,
+                    draft.created_at,
+                    draft.sent_at,
+                    draft.error_message,
+                ),
+            )
+            return draft.id
+
+    def get_draft(self, draft_id: str) -> DraftEmail | None:
+        """Fetch an email draft by ID."""
+        with self.connection() as conn:
+            row = conn.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+            if not row:
+                return None
+            return DraftEmail(
+                id=row["id"],
+                article_id=row["article_id"],
+                company=row["company"],
+                recipient_name=row["recipient_name"],
+                recipient_email=row["recipient_email"],
+                subject=row["subject"],
+                body=row["body"],
+                resume_path=row["resume_path"] or "/home/viper/Downloads/Resumes/2+/Suriyan.pdf",
+                attach_resume=bool(row["attach_resume"]),
+                status=row["status"],
+                created_at=row["created_at"],
+                sent_at=row["sent_at"],
+                error_message=row["error_message"],
+            )
+
+    def get_draft_by_article(self, article_id: str) -> DraftEmail | None:
+        """Fetch existing draft associated with an article."""
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM drafts WHERE article_id = ? ORDER BY created_at DESC LIMIT 1",
+                (article_id,),
+            ).fetchone()
+            if not row:
+                return None
+            return DraftEmail(
+                id=row["id"],
+                article_id=row["article_id"],
+                company=row["company"],
+                recipient_name=row["recipient_name"],
+                recipient_email=row["recipient_email"],
+                subject=row["subject"],
+                body=row["body"],
+                resume_path=row["resume_path"] or "/home/viper/Downloads/Resumes/2+/Suriyan.pdf",
+                attach_resume=bool(row["attach_resume"]),
+                status=row["status"],
+                created_at=row["created_at"],
+                sent_at=row["sent_at"],
+                error_message=row["error_message"],
+            )
+
+    def list_drafts(self, status: str | None = None, limit: int = 100) -> list[DraftEmail]:
+        """List email drafts ordered by creation time descending."""
+        query = "SELECT * FROM drafts"
+        params: list[Any] = []
+        if status:
+            query += " WHERE status = ?"
+            params.append(status)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self.connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [
+                DraftEmail(
+                    id=r["id"],
+                    article_id=r["article_id"],
+                    company=r["company"],
+                    recipient_name=r["recipient_name"],
+                    recipient_email=r["recipient_email"],
+                    subject=r["subject"],
+                    body=r["body"],
+                    resume_path=r["resume_path"] or "/home/viper/Downloads/Resumes/2+/Suriyan.pdf",
+                    attach_resume=bool(r["attach_resume"]),
+                    status=r["status"],
+                    created_at=r["created_at"],
+                    sent_at=r["sent_at"],
+                    error_message=r["error_message"],
+                )
+                for r in rows
+            ]
+
+    def update_draft(
+        self,
+        draft_id: str,
+        company: str | None = None,
+        recipient_name: str | None = None,
+        recipient_email: str | None = None,
+        subject: str | None = None,
+        body: str | None = None,
+        resume_path: str | None = None,
+        attach_resume: bool | None = None,
+    ) -> DraftEmail | None:
+        """Update draft attributes prior to sending."""
+        existing = self.get_draft(draft_id)
+        if not existing:
+            return None
+
+        new_company = company if company is not None else existing.company
+        new_recipient_name = (
+            recipient_name if recipient_name is not None else existing.recipient_name
+        )
+        new_recipient_email = (
+            recipient_email if recipient_email is not None else existing.recipient_email
+        )
+        new_subject = subject if subject is not None else existing.subject
+        new_body = body if body is not None else existing.body
+        new_resume_path = resume_path if resume_path is not None else existing.resume_path
+        new_attach = attach_resume if attach_resume is not None else existing.attach_resume
+
+        with self.connection() as conn:
+            conn.execute(
+                """
+                UPDATE drafts SET
+                    company = ?,
+                    recipient_name = ?,
+                    recipient_email = ?,
+                    subject = ?,
+                    body = ?,
+                    resume_path = ?,
+                    attach_resume = ?
+                WHERE id = ?
+                """,
+                (
+                    new_company,
+                    new_recipient_name,
+                    new_recipient_email,
+                    new_subject,
+                    new_body,
+                    new_resume_path,
+                    1 if new_attach else 0,
+                    draft_id,
+                ),
+            )
+
+        return self.get_draft(draft_id)
+
+    def mark_draft_sent(self, draft_id: str, sent_at: str | None = None) -> None:
+        """Mark draft as sent with timestamp."""
+        timestamp = sent_at or utc_now_iso()
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE drafts SET status = 'sent', sent_at = ?, error_message = NULL WHERE id = ?",
+                (timestamp, draft_id),
+            )
+
+    def mark_draft_failed(self, draft_id: str, error_message: str) -> None:
+        """Mark draft delivery as failed with error details."""
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE drafts SET status = 'failed', error_message = ? WHERE id = ?",
+                (error_message, draft_id),
+            )
+
+    def delete_draft(self, draft_id: str) -> bool:
+        """Delete an email draft."""
+        with self.connection() as conn:
+            cursor = conn.execute("DELETE FROM drafts WHERE id = ?", (draft_id,))
+            return cursor.rowcount > 0
+
+    def get_draft_stats(self) -> dict[str, int]:
+        """Return counts of drafts by status."""
+        with self.connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS total,
+                    SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft,
+                    SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+                FROM drafts
+                """
+            ).fetchone()
+            if not row:
+                return {"total": 0, "draft": 0, "sent": 0, "failed": 0}
+            return {
+                "total": int(row["total"] or 0),
+                "draft": int(row["draft"] or 0),
+                "sent": int(row["sent"] or 0),
+                "failed": int(row["failed"] or 0),
+            }

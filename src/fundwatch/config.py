@@ -88,26 +88,61 @@ def load_config(
             raise ConfigError(f"Failed to parse YAML from {path}: {e}") from e
 
     # Overlay environment variables
-    raw_data["db_path"] = os.environ.get("DB_PATH", raw_data.get("db_path", "./data/fundwatch.db"))
-    raw_data["log_level"] = os.environ.get("LOG_LEVEL", raw_data.get("log_level", "INFO")).upper()
+    if "DB_PATH" in os.environ:
+        raw_data["db_path"] = os.environ["DB_PATH"]
+    elif "db_path" not in raw_data:
+        raw_data["db_path"] = "./data/fundwatch.db"
 
-    raw_data["telegram_bot_token"] = os.environ.get("TELEGRAM_BOT_TOKEN")
-    raw_data["telegram_chat_id"] = os.environ.get("TELEGRAM_CHAT_ID")
-    raw_data["slack_webhook_url"] = os.environ.get("SLACK_WEBHOOK_URL")
-    raw_data["ntfy_server"] = os.environ.get(
-        "NTFY_SERVER", raw_data.get("ntfy_server", "https://ntfy.sh")
-    )
-    raw_data["smtp_host"] = os.environ.get("SMTP_HOST")
+    if "LOG_LEVEL" in os.environ:
+        raw_data["log_level"] = os.environ["LOG_LEVEL"].upper()
+    elif "log_level" not in raw_data:
+        raw_data["log_level"] = "INFO"
+
+    if "TELEGRAM_BOT_TOKEN" in os.environ:
+        raw_data["telegram_bot_token"] = os.environ["TELEGRAM_BOT_TOKEN"]
+    if "TELEGRAM_CHAT_ID" in os.environ:
+        raw_data["telegram_chat_id"] = os.environ["TELEGRAM_CHAT_ID"]
+    if "SLACK_WEBHOOK_URL" in os.environ:
+        raw_data["slack_webhook_url"] = os.environ["SLACK_WEBHOOK_URL"]
+    if "NTFY_SERVER" in os.environ:
+        raw_data["ntfy_server"] = os.environ["NTFY_SERVER"]
+    if "SMTP_HOST" in os.environ:
+        raw_data["smtp_host"] = os.environ["SMTP_HOST"]
     if "SMTP_PORT" in os.environ:
         try:
             raw_data["smtp_port"] = int(os.environ["SMTP_PORT"])
         except ValueError:
             pass
-    raw_data["smtp_user"] = os.environ.get("SMTP_USER")
-    raw_data["smtp_password"] = os.environ.get("SMTP_PASSWORD")
-    raw_data["email_to"] = os.environ.get("EMAIL_TO")
-    raw_data["anthropic_api_key"] = os.environ.get("ANTHROPIC_API_KEY")
-    raw_data["hunter_api_key"] = os.environ.get("HUNTER_API_KEY")
+    if "SMTP_USER" in os.environ:
+        raw_data["smtp_user"] = os.environ["SMTP_USER"]
+    if "SMTP_PASSWORD" in os.environ:
+        raw_data["smtp_password"] = os.environ["SMTP_PASSWORD"]
+    if "SMTP_FROM" in os.environ:
+        raw_data["smtp_from"] = os.environ["SMTP_FROM"]
+    elif "EMAIL_FROM" in os.environ:
+        raw_data["smtp_from"] = os.environ["EMAIL_FROM"]
+    if "EMAIL_TO" in os.environ:
+        raw_data["email_to"] = os.environ["EMAIL_TO"]
+    if "ANTHROPIC_API_KEY" in os.environ:
+        raw_data["anthropic_api_key"] = os.environ["ANTHROPIC_API_KEY"]
+    if "HUNTER_API_KEY" in os.environ:
+        raw_data["hunter_api_key"] = os.environ["HUNTER_API_KEY"]
+    if "RESUME_PATH" in os.environ:
+        raw_data["resume_path"] = os.environ["RESUME_PATH"]
+    if "CANDIDATE_NAME" in os.environ:
+        raw_data["candidate_name"] = os.environ["CANDIDATE_NAME"]
+    if "CANDIDATE_TITLE" in os.environ:
+        raw_data["candidate_title"] = os.environ["CANDIDATE_TITLE"]
+    if "CANDIDATE_EMAIL" in os.environ:
+        raw_data["candidate_email"] = os.environ["CANDIDATE_EMAIL"]
+    if "CANDIDATE_PHONE" in os.environ:
+        raw_data["candidate_phone"] = os.environ["CANDIDATE_PHONE"]
+    if "CANDIDATE_PORTFOLIO" in os.environ:
+        raw_data["candidate_portfolio"] = os.environ["CANDIDATE_PORTFOLIO"]
+    if "CANDIDATE_GITHUB" in os.environ:
+        raw_data["candidate_github"] = os.environ["CANDIDATE_GITHUB"]
+    if "CANDIDATE_LINKEDIN" in os.environ:
+        raw_data["candidate_linkedin"] = os.environ["CANDIDATE_LINKEDIN"]
     if "FIND_FOUNDER_EMAILS" in os.environ:
         raw_data["find_founder_emails"] = os.environ["FIND_FOUNDER_EMAILS"].lower() in {
             "true",
