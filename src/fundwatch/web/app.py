@@ -20,7 +20,7 @@ from fundwatch.models import Settings
 from fundwatch.notifiers import build_notifiers
 from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
 from fundwatch.pipeline import run_cycle
-from fundwatch.web.templates import DASHBOARD_HTML
+from fundwatch.web.templates import get_dashboard_html
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,10 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
     )
 
     @app.get("/", response_class=HTMLResponse)
+    @app.head("/", response_class=HTMLResponse)
     def index() -> str:
         """Serve the single-page clean monochrome dashboard."""
-        return DASHBOARD_HTML
+        return get_dashboard_html()
 
     @app.get("/api/stats")
     def get_stats() -> dict[str, Any]:
@@ -236,23 +237,37 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
         return draft.model_dump()
 
-    @app.post("/api/outbox/generate/{article_id}")
+    @app.post("/api/outbox/generate")
+    @app.post("/api/outbox/generate/{article_id:path}")
     def generate_draft_for_article(
-        article_id: str,
+        article_id: str | None = None,
+        article_id_query: str | None = Query(None, alias="article_id"),
         force: bool = Query(False),
     ) -> dict[str, Any]:
         """Generate a personalized job enquiry draft for a funded startup article."""
-        article = db.get_article(article_id)
+        target_id = article_id or article_id_query
+        if not target_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="article_id is required",
+            )
+
+        article = db.get_article(target_id)
+        if not article:
+            from urllib.parse import unquote
+
+            article = db.get_article(unquote(target_id))
+
         if not article:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found")
 
         # Check if already generated unless force=True
         if not force:
-            existing = db.get_draft_by_article(article_id)
+            existing = db.get_draft_by_article(target_id)
             if existing:
                 return existing.model_dump()
 
-        extraction = db.get_extraction(article_id)
+        extraction = db.get_extraction(article.id)
         draft = generate_job_enquiry(article, extraction, settings)
         db.create_draft(draft)
         return draft.model_dump()

@@ -88,15 +88,15 @@ def load_config(
             raise ConfigError(f"Failed to parse YAML from {path}: {e}") from e
 
     # Overlay environment variables
-    if "DB_PATH" in os.environ:
+    if "db_path" not in raw_data:
+        raw_data["db_path"] = os.environ.get("DB_PATH", "./data/fundwatch.db")
+    elif "DB_PATH" in os.environ and config_path is None:
         raw_data["db_path"] = os.environ["DB_PATH"]
-    elif "db_path" not in raw_data:
-        raw_data["db_path"] = "./data/fundwatch.db"
 
-    if "LOG_LEVEL" in os.environ:
+    if "log_level" not in raw_data:
+        raw_data["log_level"] = os.environ.get("LOG_LEVEL", "INFO").upper()
+    elif "LOG_LEVEL" in os.environ and config_path is None:
         raw_data["log_level"] = os.environ["LOG_LEVEL"].upper()
-    elif "log_level" not in raw_data:
-        raw_data["log_level"] = "INFO"
 
     if "TELEGRAM_BOT_TOKEN" in os.environ:
         raw_data["telegram_bot_token"] = os.environ["TELEGRAM_BOT_TOKEN"]
