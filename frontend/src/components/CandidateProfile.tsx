@@ -24,7 +24,7 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
 }) => {
   const candidate = config?.candidate || {
     name: 'Suriyan Dhanapal',
-    title: 'Generative AI & Product Engineer (2+ Years Experience)',
+    title: 'Product Engineer (2+ Years Experience)',
     email: 'suriyandhanapal@gmail.com',
     location: 'India',
     portfolio: 'https://iamsuriyan.github.io/Portfolio',

@@ -52,7 +52,7 @@ class CandidateProfile(BaseModel):
     """Candidate profile information parsed from resume for job enquiry generation."""
 
     name: str = "Suriyan Dhanapal"
-    title: str = "Generative AI | Product Engineer | Backend, Systems & Infrastructure"
+    title: str = "Product Engineer | Backend, Systems & Infrastructure"
     email: str = "suriyandhanapal@gmail.com"
     phone: str = "+91 81100 44608"
     location: str = "Coimbatore, India"
@@ -129,7 +129,7 @@ class Settings(BaseModel):
     # Candidate profile & Resume
     resume_path: str = "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
     candidate_name: str = "Suriyan Dhanapal"
-    candidate_title: str = "Generative AI | Product Engineer | Backend, Systems & Infrastructure"
+    candidate_title: str = "Product Engineer | Backend, Systems & Infrastructure"
     candidate_email: str = "suriyandhanapal@gmail.com"
     candidate_phone: str = "+91 81100 44608"
     candidate_location: str = "Coimbatore, India"

@@ -200,7 +200,7 @@ export const App: React.FC = () => {
     deals: `${totalArticles} verified rounds`,
     outbox: `${outboxStats.draft} awaiting approval`,
     feeds: `${feeds.length} active feeds`,
-    profile: 'Suriyan Dhanapal · GenAI & Product',
+    profile: 'Suriyan Dhanapal · Product Engineer',
     settings: config?.smtp?.configured ? 'Connected' : 'Ready to configure',
   }
 

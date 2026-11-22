@@ -100,7 +100,7 @@ def generate_job_enquiry(
     sector_desc = extraction.sector if (extraction and extraction.sector) else "your space"
 
     # Crisp, high-converting subject line
-    subject = f"Congrats on the {round_desc} — Product & GenAI Engineer ({settings.candidate_name})"
+    subject = f"Congrats on the {round_desc} — Product Engineer ({settings.candidate_name})"
 
     # Highly personalized body showcasing Suriyan Dhanapal's actual achievements from his resume
     # Use first name if recipient is a human person
@@ -121,9 +121,9 @@ def generate_job_enquiry(
         "engineering infrastructure."
     )
     p2 = (
-        f"I'm reaching out because I would love to contribute to {company} as a Product / "
-        "Generative AI Engineer. Over the last 2+ years, I’ve specialized in taking LLM products "
-        "from 0 to 1 and scaling them for production:"
+        f"I'm reaching out because I would love to contribute to {company} as a Product Engineer. "
+        "Over the last 2+ years, I’ve specialized in taking products from 0 to 1 and scaling "
+        "them for production:"
     )
     b1 = (
         "• Production AI Systems & Agents: Built an end-to-end compliance agent grounded in "
