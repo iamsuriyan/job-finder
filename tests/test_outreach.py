@@ -483,3 +483,50 @@ resume_path: "{sample_settings.resume_path}"
         )
         assert res_send.exit_code == 0
         assert "Successfully dispatched" in res_send.output
+
+
+def test_generate_job_enquiry_human_salutation_and_fallback(
+    sample_article: Article,
+    sample_settings: Settings,
+) -> None:
+    # 1. Human founder recipient: should address first name
+    ext_human = Extraction(
+        article_id=sample_article.id,
+        company="VitusCare",
+        domain="vituscare.com",
+        founders=[{"name": "Prabhat Shrivastava", "role": "Founder"}],
+        emails=[
+            {
+                "name": "Prabhat Shrivastava",
+                "role": "Founder",
+                "email": "prabhat@vituscare.com",
+                "confidence": 94,
+                "verified": True,
+            }
+        ],
+    )
+    draft_human = generate_job_enquiry(sample_article, ext_human, sample_settings)
+    assert draft_human.recipient_name == "Prabhat Shrivastava"
+    assert draft_human.recipient_email == "prabhat@vituscare.com"
+    assert "Hi Prabhat," in draft_human.body
+
+    # 2. Generic founding team recipient: should address company team
+    ext_generic = Extraction(
+        article_id=sample_article.id,
+        company="VitusCare",
+        domain="vituscare.com",
+        founders=[],
+        emails=[
+            {
+                "name": "Founding Team",
+                "role": "Founder Inbox",
+                "email": "founders@vituscare.com",
+                "confidence": 88,
+                "verified": True,
+            }
+        ],
+    )
+    draft_generic = generate_job_enquiry(sample_article, ext_generic, sample_settings)
+    assert draft_generic.recipient_email == "founders@vituscare.com"
+    assert "Hi VitusCare Team," in draft_generic.body
+

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import smtplib
 import uuid
 from email.message import EmailMessage
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fundwatch.db import utc_now_iso
+from fundwatch.email_finder import extract_company_name
 from fundwatch.models import Article, DraftEmail, Extraction, Settings
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,12 @@ def resolve_recipient(
             if any(k in role for k in ("founder", "ceo", "co-founder")):
                 return str(em.get("name") or "Founder"), str(em.get("email"))
 
+        # Check for role inboxes (founders@, ceo@, contact@)
+        for em in extraction.emails:
+            source = str(em.get("source", "")).lower()
+            if source == "role_inbox" or "inbox" in str(em.get("role", "")).lower():
+                return str(em.get("name") or "Founding Team"), str(em.get("email"))
+
         # Fallback to the first email found
         first_em = extraction.emails[0]
         return str(first_em.get("name") or "Team"), str(first_em.get("email"))
@@ -74,16 +80,7 @@ def generate_job_enquiry(
     """
     company = (extraction.company if extraction and extraction.company else "").strip()
     if not company:
-        match = re.search(
-            r"^(?:exclusive:\s*)?([A-Za-z0-9\s\.\-_&]+?)\s+(?:raises|bags|secures|closes|gets|nabs|lands|collects)",
-            article.title,
-            re.IGNORECASE,
-        )
-        if match:
-            company = match.group(1).strip()
-        else:
-            words = article.title.split()
-            company = words[0] if words else "Startup"
+        company = extract_company_name(article.title, article.summary or "")
 
     recipient_name, recipient_email = resolve_recipient(extraction)
 
@@ -106,11 +103,17 @@ def generate_job_enquiry(
     subject = f"Congrats on the {round_desc} — Product & GenAI Engineer ({settings.candidate_name})"
 
     # Highly personalized body showcasing Suriyan Dhanapal's actual achievements from his resume
-    salutation = (
-        f"Hi {recipient_name},"
-        if recipient_name and recipient_name != "Founding Team"
-        else f"Hi {company} Team,"
+    # Use first name if recipient is a human person
+    is_generic = (
+        recipient_name in ("Founding Team", "Team", "Company Contact")
+        or recipient_name.endswith(" Team")
+        or recipient_name.endswith(" CEO")
     )
+    if not is_generic and recipient_name:
+        first_name = recipient_name.split()[0]
+        salutation = f"Hi {first_name},"
+    else:
+        salutation = f"Hi {company} Team,"
 
     p1 = (
         f"Huge congratulations on {company}'s {round_desc}! Seeing your progress in {sector_desc} "

@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fundwatch import __version__
 from fundwatch.db import Database
 from fundwatch.fetcher import inspect_feed
-from fundwatch.models import Settings
+from fundwatch.models import Extraction, Settings
 from fundwatch.notifiers import build_notifiers
 from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
 from fundwatch.pipeline import run_cycle
@@ -262,13 +262,61 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found")
 
         # Check if already generated unless force=True
-        if not force:
-            existing = db.get_draft_by_article(target_id)
-            if existing:
-                return existing.model_dump()
+        existing = db.get_draft_by_article(target_id) or db.get_draft_by_article(article.id)
+        if existing and not force and existing.recipient_email:
+            return existing.model_dump()
 
         extraction = db.get_extraction(article.id)
+        if extraction is None or not extraction.emails:
+            from fundwatch.email_finder import (
+                discover_founding_team_emails,
+                extract_company_name,
+            )
+
+            article_full_text = f"{article.title} {article.summary or ''}"
+            known_company = (
+                extraction.company if extraction and extraction.company else ""
+            ) or extract_company_name(article.title, article.summary or "")
+
+            domain, founders, emails = discover_founding_team_emails(
+                company_name=known_company,
+                article_text=article_full_text,
+                known_domain=extraction.domain if extraction else None,
+                known_founders=extraction.founders if extraction else None,
+                hunter_api_key=settings.hunter_api_key,
+            )
+
+            if extraction is None:
+                extraction = Extraction(
+                    article_id=article.id,
+                    company=known_company,
+                    domain=domain,
+                    founders=founders,
+                    emails=emails,
+                )
+            else:
+                extraction.company = known_company or extraction.company
+                extraction.domain = domain or extraction.domain
+                extraction.founders = founders or extraction.founders
+                extraction.emails = emails or extraction.emails
+
+            db.save_extraction(extraction)
+
         draft = generate_job_enquiry(article, extraction, settings)
+
+        if existing:
+            updated = db.update_draft(
+                draft_id=existing.id,
+                company=draft.company,
+                recipient_name=draft.recipient_name,
+                recipient_email=draft.recipient_email,
+                subject=draft.subject,
+                body=draft.body,
+                resume_path=draft.resume_path,
+                attach_resume=draft.attach_resume,
+            )
+            return (updated or draft).model_dump()
+
         db.create_draft(draft)
         return draft.model_dump()
 

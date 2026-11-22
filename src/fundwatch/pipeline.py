@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -126,6 +125,28 @@ def run_cycle(
                 db.insert_article(article)
                 if matches_funding:
                     stats.matched += 1
+                    if settings.find_founder_emails:
+                        from fundwatch.email_finder import (
+                            discover_founding_team_emails,
+                            extract_company_name,
+                        )
+
+                        article_full_text = f"{article.title} {article.summary or ''}"
+                        known_company = extract_company_name(article.title, article.summary or "")
+                        domain, founders, emails = discover_founding_team_emails(
+                            company_name=known_company,
+                            article_text=article_full_text,
+                            hunter_api_key=settings.hunter_api_key,
+                            http_client=http_client,
+                        )
+                        bootstrap_extraction = Extraction(
+                            article_id=article.id,
+                            company=known_company,
+                            domain=domain,
+                            founders=founders,
+                            emails=emails,
+                        )
+                        db.save_extraction(bootstrap_extraction)
                 continue
 
             # Regular run: store article
@@ -154,23 +175,18 @@ def run_cycle(
 
             # Mandatory founding team & email discovery
             if settings.find_founder_emails:
-                from fundwatch.email_finder import discover_founding_team_emails
+                from fundwatch.email_finder import (
+                    discover_founding_team_emails,
+                    extract_company_name,
+                )
 
                 article_full_text = f"{article.title} {article.summary or ''}"
-                known_company = extraction.company if extraction else None
-                if not known_company:
-                    comp_match = re.search(
-                        r"^([A-Z0-9][\w\s&.-]{1,30}?)\s+(?:raises|raised|secures|bags|closes)",
-                        article.title,
-                        re.IGNORECASE,
-                    )
-                    if comp_match:
-                        known_company = comp_match.group(1).strip()
-                    else:
-                        known_company = article.title.split()[0]
+                resolved_company: str = (
+                    extraction.company if extraction and extraction.company else ""
+                ) or extract_company_name(article.title, article.summary or "")
 
                 domain, founders, emails = discover_founding_team_emails(
-                    company_name=known_company,
+                    company_name=resolved_company,
                     article_text=article_full_text,
                     known_domain=extraction.domain if extraction else None,
                     known_founders=extraction.founders if extraction else None,
@@ -181,12 +197,13 @@ def run_cycle(
                 if extraction is None:
                     extraction = Extraction(
                         article_id=article.id,
-                        company=known_company,
+                        company=resolved_company,
                         domain=domain,
                         founders=founders,
                         emails=emails,
                     )
                 else:
+                    extraction.company = resolved_company
                     extraction.domain = domain
                     extraction.founders = founders
                     extraction.emails = emails

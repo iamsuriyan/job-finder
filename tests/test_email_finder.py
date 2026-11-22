@@ -10,11 +10,14 @@ import respx
 from fundwatch.email_finder import (
     clean_domain,
     discover_founding_team_emails,
+    extract_company_name,
     extract_founders_from_text,
     generate_founder_emails,
+    is_port_25_accessible,
     query_hunter_api,
     resolve_company_domain,
     verify_mx,
+    verify_smtp_probe,
 )
 from fundwatch.models import Article, Extraction
 from fundwatch.notifiers import format_article_message
@@ -171,3 +174,73 @@ def test_format_article_message_with_founder_emails() -> None:
     assert "✉️ Founding Team & Contacts:" in msg
     assert "Scott Wu (CEO): scott@cognition.ai [Verified]" in msg
     assert "founders@cognition.ai [Verified]" in msg
+
+
+def test_extract_company_name_robustness() -> None:
+    assert (
+        extract_company_name("Exclusive: Celcius Logistics Eyes ₹100 Cr To Expand")
+        == "Celcius Logistics"
+    )
+    assert (
+        extract_company_name("Dialysis care provider VitusCare raises $3 Mn in Series B round")
+        == "VitusCare"
+    )
+    assert (
+        extract_company_name("Decoding captable of Aman Gupta and Ranveer Singh’s H.I.M")
+        == "H.I.M"
+    )
+    assert (
+        extract_company_name("Centre’s Antariksh VC Fund Leads SatSure’s ₹200 Cr Series B Round")
+        == "SatSure"
+    )
+    assert (
+        extract_company_name("Former Alibaba exec’s Everful raises $48.5M to connect retailers")
+        == "Everful"
+    )
+    assert (
+        extract_company_name("Disseqt AI raises $8 Mn led by Gresham House Ventures")
+        == "Disseqt AI"
+    )
+    assert (
+        extract_company_name("Sarvam’s Token Factory Raises India’s AI Inference Stakes")
+        == "Sarvam"
+    )
+
+
+def test_extract_founders_from_text_multi_founder() -> None:
+    text_vitus = (
+        "Founded in 2017 by Prabhat Shrivastava, VitusCare operates through a capital-light model."
+    )
+    founders_vitus = extract_founders_from_text(text_vitus)
+    assert len(founders_vitus) == 1
+    assert founders_vitus[0]["name"] == "Prabhat Shrivastava"
+
+    text_disseqt = (
+        "Founded in late 2025 by Apoorva Kumar, Manish Atri and Cyril Treacy, "
+        "Disseqt AI provides an AI governance platform."
+    )
+    founders_disseqt = extract_founders_from_text(text_disseqt)
+    names_disseqt = [f["name"] for f in founders_disseqt]
+    assert "Apoorva Kumar" in names_disseqt
+    assert "Manish Atri" in names_disseqt
+    assert "Cyril Treacy" in names_disseqt
+
+
+def test_is_port_25_accessible_cached() -> None:
+    with patch("socket.socket") as mock_sock:
+        mock_instance = MagicMock()
+        mock_instance.connect.side_effect = Exception("Connection timed out")
+        mock_sock.return_value.__enter__.return_value = mock_instance
+
+        # Reset cache
+        import fundwatch.email_finder as ef
+
+        ef._CAN_CONNECT_PORT_25 = None
+
+        accessible = is_port_25_accessible("smtp.google.com")
+        assert accessible is False
+
+        # When blocked, verify_smtp_probe returns None immediately
+        probe_res = verify_smtp_probe("test@google.com", "smtp.google.com")
+        assert probe_res is None
+
