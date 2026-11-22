@@ -26,6 +26,7 @@ import {
   deleteDraft,
   sendDraft,
 } from './api/client'
+import { ExternalLink } from 'lucide-react'
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('deals')
@@ -79,8 +80,8 @@ export const App: React.FC = () => {
       })
       setArticles(res.items || [])
       setTotalArticles(res.total || 0)
-    } catch (err: any) {
-      showToast(`Failed to load funding deals: ${err.message}`)
+    } catch (err: unknown) {
+      showToast(`Failed to load funding deals: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoadingArticles(false)
     }
@@ -95,8 +96,8 @@ export const App: React.FC = () => {
       if (res.stats) {
         setOutboxStats(res.stats)
       }
-    } catch (err: any) {
-      showToast(`Failed to load outbox: ${err.message}`)
+    } catch (err: unknown) {
+      showToast(`Failed to load outbox: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoadingOutbox(false)
     }
@@ -108,8 +109,8 @@ export const App: React.FC = () => {
     try {
       const items = await fetchFeeds()
       setFeeds(items || [])
-    } catch (err: any) {
-      showToast(`Failed to load feeds: ${err.message}`)
+    } catch (err: unknown) {
+      showToast(`Failed to load feeds: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setLoadingFeeds(false)
     }
@@ -152,8 +153,8 @@ export const App: React.FC = () => {
       setIsModalOpen(true)
       await loadOutbox()
       showToast(`Job enquiry draft ready for ${article.company || article.title}!`)
-    } catch (err: any) {
-      showToast(`Draft generation failed: ${err.message}`)
+    } catch (err: unknown) {
+      showToast(`Draft generation failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setGeneratingArticleId(null)
     }
@@ -187,9 +188,25 @@ export const App: React.FC = () => {
     await loadOutbox()
   }
 
+  const tabLabels: Record<string, string> = {
+    deals: 'Funding Deals',
+    outbox: 'Outbox',
+    feeds: 'Feed Sources',
+    profile: 'My Profile',
+    settings: 'SMTP Settings',
+  }
+
+  const tabSubtitles: Record<string, string> = {
+    deals: `${totalArticles} verified rounds`,
+    outbox: `${outboxStats.draft} awaiting approval`,
+    feeds: `${feeds.length} active feeds`,
+    profile: 'Suriyan Dhanapal · GenAI & Product',
+    settings: config?.smtp?.configured ? 'Connected' : 'Ready to configure',
+  }
+
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 flex font-sans selection:bg-zinc-950 selection:text-white">
-      {/* Animated Left Sidebar */}
+    <div className="flex h-screen bg-[#FAFAFA] overflow-hidden text-zinc-900">
+      {/* Fixed Left Sidebar */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -200,110 +217,102 @@ export const App: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main
-        className={`flex-1 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] min-h-screen flex flex-col ${
-          isCollapsed ? 'ml-20' : 'ml-72'
+      <div
+        className={`flex-1 flex flex-col h-screen overflow-hidden transition-all duration-300 ease-spring ${
+          isCollapsed ? 'ml-16' : 'ml-64'
         }`}
       >
         {/* Top Navbar */}
-        <header className="sticky top-0 z-20 h-18 px-8 border-b border-zinc-200 bg-white/80 backdrop-blur-md flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-lg bg-zinc-100 border border-zinc-200 text-zinc-700">
-              {activeTab === 'deals' && '⚡ Deals Feed'}
-              {activeTab === 'outbox' && '✉️ Human Outreach Review'}
-              {activeTab === 'feeds' && '📡 RSS Sources Health'}
-              {activeTab === 'profile' && '👤 Candidate Portfolio'}
-              {activeTab === 'settings' && '⚙️ SMTP Configuration'}
+        <header className="h-14 px-6 border-b border-zinc-100 bg-white/90 backdrop-blur-md flex items-center justify-between flex-shrink-0 z-20">
+          <div className="flex items-center gap-2.5">
+            <span className="text-sm font-semibold text-zinc-900">
+              {tabLabels[activeTab]}
             </span>
-
             <span className="text-zinc-300">/</span>
-
-            <span className="text-xs font-mono text-zinc-500">
-              {activeTab === 'deals' && `${totalArticles} Verified Rounds`}
-              {activeTab === 'outbox' && `${outboxStats.draft} Awaiting Approval`}
-              {activeTab === 'feeds' && `${feeds.length} Active Feeds`}
-              {activeTab === 'profile' && 'Suriyan Dhanapal • GenAI & Product'}
-              {activeTab === 'settings' && (config?.smtp?.configured ? 'Connected' : 'Ready to Configure')}
+            <span className="text-xs text-zinc-400 font-medium">
+              {tabSubtitles[activeTab]}
             </span>
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-mono">
-            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Local Database Active</span>
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-50 border border-zinc-200/60 text-zinc-600 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="font-medium">System Online</span>
             </span>
 
             <a
               href="/api/outbox/resume/download"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-medium transition shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition shadow-xs"
             >
               <span>Suriyan.pdf</span>
-              <span className="text-[10px] text-zinc-400">↗</span>
+              <ExternalLink size={11} className="text-zinc-400" />
             </a>
           </div>
         </header>
 
         {/* Tab Content Body */}
-        <div className="p-8 flex-1 max-w-7xl w-full mx-auto animate-fadeIn">
-          {activeTab === 'deals' && (
-            <DealsFeed
-              articles={articles}
-              loading={loadingArticles}
-              total={totalArticles}
-              page={articlesPage}
-              setPage={setArticlesPage}
-              onRefresh={loadArticles}
-              onDraftJobEnquiry={handleDraftJobEnquiry}
-              generatingArticleId={generatingArticleId}
-              showToast={showToast}
-              feedFilter={feedFilter}
-              setFeedFilter={setFeedFilter}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              feeds={feeds}
-            />
-          )}
+        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="max-w-6xl mx-auto">
+            {activeTab === 'deals' && (
+              <DealsFeed
+                articles={articles}
+                loading={loadingArticles}
+                total={totalArticles}
+                page={articlesPage}
+                setPage={setArticlesPage}
+                onRefresh={loadArticles}
+                onDraftJobEnquiry={handleDraftJobEnquiry}
+                generatingArticleId={generatingArticleId}
+                showToast={showToast}
+                feedFilter={feedFilter}
+                setFeedFilter={setFeedFilter}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                feeds={feeds}
+              />
+            )}
 
-          {activeTab === 'outbox' && (
-            <OutboxReview
-              drafts={drafts}
-              stats={outboxStats}
-              loading={loadingOutbox}
-              onOpenDraft={handleOpenDraft}
-              onSendDraft={(d) => handleOpenDraft(d, 'read')}
-              onDeleteDraft={handleDeleteDraft}
-              onRefresh={loadOutbox}
-              statusFilter={outboxStatusFilter}
-              setStatusFilter={setOutboxStatusFilter}
-            />
-          )}
+            {activeTab === 'outbox' && (
+              <OutboxReview
+                drafts={drafts}
+                stats={outboxStats}
+                loading={loadingOutbox}
+                onOpenDraft={handleOpenDraft}
+                onSendDraft={(d) => handleOpenDraft(d, 'read')}
+                onDeleteDraft={handleDeleteDraft}
+                onRefresh={loadOutbox}
+                statusFilter={outboxStatusFilter}
+                setStatusFilter={setOutboxStatusFilter}
+              />
+            )}
 
-          {activeTab === 'feeds' && (
-            <FeedsMonitor
-              feeds={feeds}
-              loading={loadingFeeds}
-              onRefresh={loadFeeds}
-              showToast={showToast}
-            />
-          )}
+            {activeTab === 'feeds' && (
+              <FeedsMonitor
+                feeds={feeds}
+                loading={loadingFeeds}
+                onRefresh={loadFeeds}
+                showToast={showToast}
+              />
+            )}
 
-          {activeTab === 'profile' && (
-            <CandidateProfile
-              resumeStatus={resumeStatus}
-              config={config}
-            />
-          )}
+            {activeTab === 'profile' && (
+              <CandidateProfile
+                resumeStatus={resumeStatus}
+                config={config}
+              />
+            )}
 
-          {activeTab === 'settings' && (
-            <SmtpSettings
-              config={config}
-              showToast={showToast}
-            />
-          )}
-        </div>
-      </main>
+            {activeTab === 'settings' && (
+              <SmtpSettings
+                config={config}
+                showToast={showToast}
+              />
+            )}
+          </div>
+        </main>
+      </div>
 
       {/* Interactive Email Modal */}
       <EmailModal

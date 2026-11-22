@@ -1,18 +1,17 @@
 import React, { useState } from 'react'
 import {
+  ShieldCheck,
+  FileText,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
   Inbox,
-  Send,
   Eye,
   Edit3,
   Trash2,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  ShieldCheck,
-  FileText,
-  User,
-  Sparkles,
-  ArrowRight,
+  Send,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import { DraftEmail, DraftStats } from '../types'
 
@@ -28,6 +27,32 @@ interface OutboxReviewProps {
   setStatusFilter: (status: string) => void
 }
 
+function formatDate(isoString?: string): string {
+  if (!isoString) return 'Recently'
+  try {
+    const d = new Date(isoString)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return isoString
+  }
+}
+
+const SkeletonRow = () => (
+  <div className="bg-white border border-zinc-100 rounded-xl p-4 flex items-center gap-4">
+    <div className="skeleton w-2.5 h-2.5 rounded-full flex-shrink-0" />
+    <div className="flex-1 space-y-2">
+      <div className="skeleton h-4 w-40" />
+      <div className="skeleton h-3 w-64" />
+    </div>
+    <div className="skeleton h-3 w-24 hidden sm:block" />
+    <div className="flex gap-2">
+      <div className="skeleton h-8 w-8 rounded-lg" />
+      <div className="skeleton h-8 w-8 rounded-lg" />
+      <div className="skeleton h-8 w-8 rounded-lg" />
+    </div>
+  </div>
+)
+
 export const OutboxReview: React.FC<OutboxReviewProps> = ({
   drafts,
   stats,
@@ -39,355 +64,229 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
   statusFilter,
   setStatusFilter,
 }) => {
-  const [draftToDelete, setDraftToDelete] = useState<DraftEmail | null>(null)
-
-  const formatDate = (isoString?: string) => {
-    if (!isoString) return 'Recent'
-    try {
-      const d = new Date(isoString)
-      return d.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    } catch {
-      return isoString
-    }
-  }
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const filteredDrafts = drafts.filter((d) => {
     if (!statusFilter) return true
     return d.status === statusFilter
   })
 
-  return (
-    <div className="space-y-6">
-      {/* Top Banner: Human-in-the-Loop Security Guarantee */}
-      <div className="p-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="p-2.5 rounded-xl bg-emerald-600 text-white shrink-0 shadow-xs">
-            <ShieldCheck size={20} />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
-              <span>Strict Human-in-the-Loop Cold Outreach Guarantee</span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 text-[10px] font-mono font-bold">
-                Manual Approval
-              </span>
-            </h2>
-            <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
-              Emails are automatically saved with <strong>draft</strong> status and are <strong>never</strong> dispatched without explicit human inspection and confirmation. Click "Review & Read" on any draft to verify recipient, subject, and personalized accomplishments before sending.
-            </p>
-          </div>
-        </div>
+  const statCards = [
+    {
+      key: '',
+      label: 'All Drafts',
+      value: stats?.total ?? drafts.length,
+      icon: Inbox,
+      color: 'text-zinc-500',
+      activeColor: 'border-zinc-900 bg-zinc-900 text-white',
+    },
+    {
+      key: 'draft',
+      label: 'Pending Review',
+      value: stats?.draft ?? 0,
+      icon: Clock,
+      color: 'text-amber-500',
+      activeColor: 'border-amber-500 bg-amber-50 text-amber-800',
+    },
+    {
+      key: 'sent',
+      label: 'Sent',
+      value: stats?.sent ?? 0,
+      icon: CheckCircle2,
+      color: 'text-emerald-500',
+      activeColor: 'border-emerald-500 bg-emerald-50 text-emerald-800',
+    },
+    {
+      key: 'failed',
+      label: 'Failed',
+      value: stats?.failed ?? 0,
+      icon: AlertCircle,
+      color: 'text-red-500',
+      activeColor: 'border-red-400 bg-red-50 text-red-800',
+    },
+  ]
 
+  return (
+    <div className="space-y-5 animate-fade-in">
+      {/* Human Guarantee Banner */}
+      <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+        <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <ShieldCheck size={16} className="text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-semibold text-emerald-900">Human-in-the-Loop Guarantee</h3>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-800 text-[10px] font-mono font-bold">
+              Manual Approval Required
+            </span>
+          </div>
+          <p className="text-xs text-emerald-700 mt-1 leading-relaxed">
+            Emails are saved as <strong>drafts</strong> and <strong>never</strong> sent without your explicit review and confirmation. Click <em>Review</em> on any draft to verify before sending.
+          </p>
+        </div>
         <a
           href="/api/outbox/resume/download"
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-950 hover:bg-emerald-900 text-white font-mono text-xs font-medium transition shrink-0 shadow-xs"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-white text-xs font-medium transition-all flex-shrink-0"
         >
-          <FileText size={13} />
-          <span>Suriyan.pdf Attached</span>
+          <FileText size={12} />
+          <span>Suriyan.pdf</span>
         </a>
       </div>
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div
-          onClick={() => setStatusFilter('')}
-          className={`cursor-pointer p-4 rounded-xl border transition-all ${
-            statusFilter === ''
-              ? 'border-zinc-950 bg-zinc-950 text-white shadow-sm'
-              : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-900 shadow-xs'
-          }`}
-        >
-          <div className="text-[11px] font-mono uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>Total Drafts</span>
-            <Inbox size={14} className={statusFilter === '' ? 'text-zinc-400' : 'text-zinc-500'} />
-          </div>
-          <div className="text-2xl font-bold font-mono">{stats?.total || drafts.length}</div>
-          <div className="text-[10px] font-mono mt-1 opacity-70">Generated for funded rounds</div>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('draft')}
-          className={`cursor-pointer p-4 rounded-xl border transition-all ${
-            statusFilter === 'draft'
-              ? 'border-zinc-950 bg-zinc-950 text-white shadow-sm'
-              : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-900 shadow-xs'
-          }`}
-        >
-          <div className="text-[11px] font-mono uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>Pending Review</span>
-            <Clock size={14} className="text-amber-500" />
-          </div>
-          <div className="text-2xl font-bold font-mono text-amber-500">{stats?.draft || 0}</div>
-          <div className="text-[10px] font-mono mt-1 opacity-70">Awaiting human dispatch</div>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('sent')}
-          className={`cursor-pointer p-4 rounded-xl border transition-all ${
-            statusFilter === 'sent'
-              ? 'border-zinc-950 bg-zinc-950 text-white shadow-sm'
-              : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-900 shadow-xs'
-          }`}
-        >
-          <div className="text-[11px] font-mono uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>Sent Successfully</span>
-            <CheckCircle2 size={14} className="text-emerald-500" />
-          </div>
-          <div className="text-2xl font-bold font-mono text-emerald-500">{stats?.sent || 0}</div>
-          <div className="text-[10px] font-mono mt-1 opacity-70">Dispatched via SMTP</div>
-        </div>
-
-        <div
-          onClick={() => setStatusFilter('failed')}
-          className={`cursor-pointer p-4 rounded-xl border transition-all ${
-            statusFilter === 'failed'
-              ? 'border-zinc-950 bg-zinc-950 text-white shadow-sm'
-              : 'border-zinc-200 bg-white hover:border-zinc-300 text-zinc-900 shadow-xs'
-          }`}
-        >
-          <div className="text-[11px] font-mono uppercase tracking-wider mb-1 flex items-center justify-between">
-            <span>Failed</span>
-            <AlertCircle size={14} className="text-red-500" />
-          </div>
-          <div className="text-2xl font-bold font-mono text-red-500">{stats?.failed || 0}</div>
-          <div className="text-[10px] font-mono mt-1 opacity-70">SMTP connection error</div>
-        </div>
-      </div>
-
-      {/* Filter Tabs Bar */}
-      <div className="p-3 rounded-2xl border border-zinc-200 bg-white shadow-xs flex items-center justify-between">
-        <div className="flex items-center gap-1.5 font-mono text-xs">
-          <button
-            onClick={() => setStatusFilter('')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition ${
-              statusFilter === ''
-                ? 'bg-zinc-950 text-white font-semibold'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-            }`}
-          >
-            All ({drafts.length})
-          </button>
-          <button
-            onClick={() => setStatusFilter('draft')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition ${
-              statusFilter === 'draft'
-                ? 'bg-zinc-950 text-white font-semibold'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-            }`}
-          >
-            Ready to Send ({stats?.draft || 0})
-          </button>
-          <button
-            onClick={() => setStatusFilter('sent')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition ${
-              statusFilter === 'sent'
-                ? 'bg-zinc-950 text-white font-semibold'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-            }`}
-          >
-            Sent ({stats?.sent || 0})
-          </button>
-          <button
-            onClick={() => setStatusFilter('failed')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition ${
-              statusFilter === 'failed'
-                ? 'bg-zinc-950 text-white font-semibold'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-            }`}
-          >
-            Failed ({stats?.failed || 0})
-          </button>
-        </div>
-
+      {/* Stats + Header row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">Outbox</h1>
         <button
           onClick={onRefresh}
-          className="text-xs font-mono font-medium px-3 py-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-700 transition"
+          disabled={loading}
+          className="p-2 bg-white border border-zinc-200 rounded-lg text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50 hover:border-zinc-300 transition-all disabled:opacity-50 self-end sm:self-auto"
+          title="Refresh outbox"
         >
-          Refresh Outbox
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
-      {/* Drafts List */}
-      {loading && drafts.length === 0 ? (
-        <div className="py-24 text-center border-2 border-dashed border-zinc-200 rounded-2xl bg-white">
-          <div className="w-7 h-7 mx-auto mb-3 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin"></div>
-          <p className="font-mono text-xs text-zinc-500">Loading outbox review drafts...</p>
-        </div>
-      ) : filteredDrafts.length === 0 ? (
-        <div className="py-24 text-center border-2 border-dashed border-zinc-200 rounded-2xl bg-white">
-          <p className="font-mono text-sm text-zinc-700 font-semibold">
-            {statusFilter
-              ? `No drafts with status '${statusFilter.toUpperCase()}'.`
-              : 'Your outreach outbox is currently empty.'}
-          </p>
-          <p className="font-mono text-xs text-zinc-400 mt-1">
-            Head to the <strong>Funding Deals</strong> tab and click "Draft Job Enquiry" on any startup deal.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredDrafts.map((draft) => {
-            const isDraft = draft.status === 'draft'
-            const isSent = draft.status === 'sent'
-            const isFailed = draft.status === 'failed'
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {statCards.map((card) => {
+          const Icon = card.icon
+          const isActive = statusFilter === card.key
+          return (
+            <button
+              key={card.key}
+              onClick={() => setStatusFilter(card.key)}
+              className={`text-left p-4 rounded-xl border transition-all duration-150 ${
+                isActive
+                  ? card.activeColor + ' border-opacity-100'
+                  : 'bg-white border-zinc-100 hover:border-zinc-200 shadow-sm text-zinc-800'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-[11px] font-medium uppercase tracking-wide ${isActive ? 'opacity-80' : 'text-zinc-400'}`}>
+                  {card.label}
+                </span>
+                <Icon size={14} className={isActive ? 'opacity-70' : card.color} />
+              </div>
+              <div className={`text-2xl font-bold font-mono ${isActive ? '' : card.color}`}>
+                {card.value}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Draft list */}
+      <div className="space-y-2">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
+        ) : filteredDrafts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-zinc-100 flex items-center justify-center mb-4">
+              <Inbox size={22} className="text-zinc-400" />
+            </div>
+            <h3 className="text-base font-semibold text-zinc-700 mb-1">
+              {statusFilter ? `No ${statusFilter} emails` : 'No drafts yet'}
+            </h3>
+            <p className="text-sm text-zinc-400 max-w-xs">
+              Generate outreach emails from funding deals and they'll appear here for review.
+            </p>
+          </div>
+        ) : (
+          filteredDrafts.map((draft) => {
+            const isDeleting = deletingId === draft.id
+
+            const statusDot =
+              draft.status === 'sent'
+                ? 'bg-emerald-500'
+                : draft.status === 'failed'
+                ? 'bg-red-500'
+                : 'bg-amber-400'
 
             return (
               <div
                 key={draft.id}
-                className="p-5 rounded-2xl border border-zinc-200 bg-white hover:border-zinc-400 transition-all duration-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5 group"
+                className="bg-white border border-zinc-100 rounded-xl shadow-sm hover:shadow-md hover:border-zinc-200 transition-all duration-200"
               >
-                {/* Left Side: Metadata & Subject Preview */}
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-2.5 font-mono text-xs flex-wrap">
-                    {/* Status Badge */}
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold uppercase text-[10px] ${
-                        isSent
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          : isFailed
-                          ? 'bg-red-100 text-red-800 border border-red-200'
-                          : 'bg-zinc-100 text-zinc-800 border border-zinc-300'
-                      }`}
-                    >
-                      {isSent ? (
-                        <CheckCircle2 size={11} className="text-emerald-600" />
-                      ) : isFailed ? (
-                        <AlertCircle size={11} className="text-red-600" />
-                      ) : (
-                        <Clock size={11} className="text-zinc-600" />
+                <div className="flex items-center gap-4 p-4">
+                  {/* Status dot */}
+                  <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot}`} title={draft.status} />
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-zinc-900">{draft.company}</span>
+                      {draft.recipient_email && (
+                        <span className="text-xs text-zinc-400 font-mono">{draft.recipient_email}</span>
                       )}
-                      <span>{draft.status.toUpperCase()}</span>
-                    </span>
-
-                    <span className="font-bold text-zinc-950 px-2 py-0.5 rounded-md bg-zinc-100 border border-zinc-200">
-                      {draft.company}
-                    </span>
-
-                    <span className="text-zinc-600">Created: {formatDate(draft.created_at)}</span>
-
-                    {draft.attach_resume && (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-zinc-700 font-semibold px-2 py-0.5 rounded-md bg-zinc-50 border border-zinc-200">
-                        <FileText size={10} className="text-zinc-500" /> Suriyan.pdf
-                      </span>
-                    )}
+                    </div>
+                    <p className="text-sm text-zinc-500 truncate mt-0.5">{draft.subject}</p>
                   </div>
 
-                  {/* Recipient Line */}
-                  <div className="flex items-center gap-2 font-mono text-xs text-zinc-700">
-                    <span className="text-zinc-500 font-semibold">To:</span>
-                    <span className="font-semibold text-zinc-950">{draft.recipient_name}</span>
-                    {draft.recipient_email ? (
-                      <span className="px-2 py-0.5 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-900 font-medium">
-                        {draft.recipient_email}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-md bg-red-50 border border-red-200 text-red-600 font-bold">
-                        NO EMAIL FOUND
-                      </span>
-                    )}
-                  </div>
+                  {/* Date */}
+                  <span className="hidden sm:block text-xs text-zinc-400 flex-shrink-0">
+                    {formatDate(draft.created_at)}
+                  </span>
 
-                  {/* Subject Line */}
-                  <div className="text-sm font-semibold text-zinc-950 flex items-center gap-2">
-                    <span>{draft.subject}</span>
-                  </div>
-
-                  {/* Body Preview */}
-                  <p className="text-xs text-zinc-600 line-clamp-2 leading-relaxed font-sans">
-                    {draft.body}
-                  </p>
-
-                  {/* Failure Error Message */}
-                  {isFailed && draft.error_message && (
-                    <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 font-mono text-[11px]">
-                      Error: {draft.error_message}
+                  {/* Actions */}
+                  {isDeleting ? (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-zinc-500">Delete?</span>
+                      <button
+                        onClick={() => { onDeleteDraft(draft.id); setDeletingId(null) }}
+                        className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-all"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setDeletingId(null)}
+                        className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        onClick={() => onOpenDraft(draft, 'read')}
+                        className="p-2 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-all"
+                        title="Review email"
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        onClick={() => onOpenDraft(draft, 'edit')}
+                        className="p-2 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-all"
+                        title="Edit email"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                      {draft.status === 'draft' && (
+                        <button
+                          onClick={() => onSendDraft(draft)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white transition-all"
+                          title="Review & send"
+                        >
+                          <Send size={12} />
+                          Send
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setDeletingId(draft.id)}
+                        className="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                        title="Delete draft"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                   )}
                 </div>
-
-                {/* Right Side: Action Buttons */}
-                <div className="flex items-center gap-2 shrink-0 font-mono text-xs self-end md:self-center">
-                  {/* Read / Review Button */}
-                  <button
-                    onClick={() => onOpenDraft(draft, 'read')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-950 font-medium transition shadow-xs"
-                    title="Open clean Reader view"
-                  >
-                    <Eye size={13} />
-                    <span>Review & Read</span>
-                  </button>
-
-                  {/* Edit Button */}
-                  <button
-                    onClick={() => onOpenDraft(draft, 'edit')}
-                    className="p-2 rounded-xl border border-zinc-300 bg-white hover:bg-zinc-100 text-zinc-700 hover:text-zinc-950 transition shadow-xs"
-                    title="Edit subject or body"
-                  >
-                    <Edit3 size={14} />
-                  </button>
-
-                  {/* Send Button */}
-                  {isDraft && (
-                    <button
-                      onClick={() => onSendDraft(draft)}
-                      disabled={!draft.recipient_email}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-medium transition shadow-xs disabled:opacity-50"
-                      title={draft.recipient_email ? 'Dispatch email via SMTP' : 'Add recipient email first'}
-                    >
-                      <Send size={12} />
-                      <span>Send Now</span>
-                    </button>
-                  )}
-
-                  {/* Delete Button */}
-                  <button
-                    onClick={() => setDraftToDelete(draft)}
-                    className="p-2 rounded-xl border border-zinc-200 bg-white hover:bg-red-50 hover:border-red-200 text-zinc-500 hover:text-red-600 transition shadow-xs"
-                    title="Delete draft"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
               </div>
             )
-          })}
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {draftToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md p-6 rounded-2xl bg-white border border-zinc-200 shadow-xl space-y-4 animate-fadeIn">
-            <h3 className="font-bold text-base text-zinc-950">Delete Outreach Draft?</h3>
-            <p className="text-xs text-zinc-600 leading-relaxed">
-              Are you sure you want to permanently delete the draft for <strong>{draftToDelete.company}</strong>? This action cannot be undone.
-            </p>
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                onClick={() => setDraftToDelete(null)}
-                className="px-4 py-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-100 text-xs font-mono font-medium transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  onDeleteDraft(draftToDelete.id)
-                  setDraftToDelete(null)
-                }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-mono font-medium transition shadow-xs"
-              >
-                Delete Draft
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  Zap,
   Flame,
   Inbox,
   Rss,
@@ -9,7 +10,6 @@ import {
   ChevronRight,
   FileText,
   ExternalLink,
-  Sparkles,
 } from 'lucide-react'
 import { ResumeStatus, DraftStats } from '../types'
 
@@ -22,6 +22,39 @@ interface SidebarProps {
   resumeStatus?: ResumeStatus | null
 }
 
+const navItems = [
+  {
+    id: 'deals',
+    label: 'Funding Deals',
+    sublabel: 'Live rounds',
+    icon: Flame,
+  },
+  {
+    id: 'outbox',
+    label: 'Outbox',
+    sublabel: 'Review queue',
+    icon: Inbox,
+  },
+  {
+    id: 'feeds',
+    label: 'Feed Sources',
+    sublabel: 'RSS health',
+    icon: Rss,
+  },
+  {
+    id: 'profile',
+    label: 'My Profile',
+    sublabel: 'Suriyan Dhanapal',
+    icon: User,
+  },
+  {
+    id: 'settings',
+    label: 'SMTP Settings',
+    sublabel: 'Email config',
+    icon: Settings,
+  },
+]
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
@@ -30,191 +63,141 @@ export const Sidebar: React.FC<SidebarProps> = ({
   outboxStats,
   resumeStatus,
 }) => {
-  const navItems = [
-    {
-      id: 'deals',
-      label: 'Funding Deals',
-      sublabel: 'Live Startup Deals',
-      icon: Flame,
-      badge: null,
-    },
-    {
-      id: 'outbox',
-      label: 'Outbox & Review',
-      sublabel: 'Human Review Queue',
-      icon: Inbox,
-      badge: outboxStats?.draft ? `${outboxStats.draft}` : null,
-      badgeColor: 'bg-zinc-950 text-white',
-    },
-    {
-      id: 'feeds',
-      label: 'Feed Sources',
-      sublabel: 'Health & Status',
-      icon: Rss,
-      badge: null,
-    },
-    {
-      id: 'profile',
-      label: 'Candidate Profile',
-      sublabel: 'Suriyan Dhanapal',
-      icon: User,
-      badge: null,
-    },
-    {
-      id: 'settings',
-      label: 'SMTP & Config',
-      sublabel: 'Outreach Settings',
-      icon: Settings,
-      badge: null,
-    },
-  ]
-
   return (
     <aside
-      className={`fixed top-0 left-0 h-screen z-30 flex flex-col justify-between border-r border-zinc-200 bg-white transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
-        isCollapsed ? 'w-20' : 'w-72'
+      className={`fixed top-0 left-0 h-screen z-30 bg-white border-r border-zinc-100 flex flex-col transition-all duration-300 ease-spring select-none ${
+        isCollapsed ? 'w-16' : 'w-64'
       }`}
     >
-      {/* Top Section: Brand & Navigation */}
-      <div className="flex flex-col">
-        {/* Brand Header */}
-        <div className="h-18 px-5 border-b border-zinc-100 flex items-center justify-between">
-          {!isCollapsed && (
-            <div className="flex items-center gap-3 animate-fadeIn">
-              <div className="w-9 h-9 rounded-xl bg-zinc-950 flex items-center justify-center text-white font-mono text-base font-bold shadow-xs">
-                ⚡
-              </div>
-              <div className="flex flex-col">
-                <span className="font-bold text-sm tracking-tight text-zinc-950 flex items-center gap-1.5">
-                  FundWatch
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                </span>
-                <span className="text-[11px] font-mono text-zinc-600">Founder Outreach Engine</span>
-              </div>
-            </div>
-          )}
-
-          {isCollapsed && (
-            <div className="mx-auto w-9 h-9 rounded-xl bg-zinc-950 flex items-center justify-center text-white font-mono text-base font-bold shadow-xs">
-              ⚡
-            </div>
-          )}
-
-          {/* Toggle Sidebar Collapse Button */}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-600 hover:text-zinc-900 transition-colors shadow-xs"
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-          </button>
+      {/* Brand */}
+      <div
+        className={`h-14 flex items-center border-b border-zinc-100 flex-shrink-0 ${
+          isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'
+        }`}
+      >
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <Zap size={15} className="text-white" strokeWidth={2.5} />
         </div>
-
-        {/* Navigation List */}
-        <nav className="p-3 space-y-1.5">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = activeTab === item.id
-
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                title={isCollapsed ? item.label : undefined}
-                className={`w-full group relative flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-medium text-xs transition-all duration-150 ${
-                  isActive
-                    ? 'bg-zinc-950 text-white font-semibold shadow-xs'
-                    : 'text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100/80'
-                } ${isCollapsed ? 'justify-center px-2' : ''}`}
-              >
-                <Icon
-                  size={18}
-                  className={`shrink-0 transition-transform duration-150 group-hover:scale-110 ${
-                    isActive ? 'text-white' : 'text-zinc-600 group-hover:text-zinc-950'
-                  }`}
-                />
-
-                {!isCollapsed && (
-                  <div className="flex-1 text-left flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span>{item.label}</span>
-                      <span
-                        className={`text-[10px] font-mono leading-tight ${
-                          isActive ? 'text-zinc-400' : 'text-zinc-600'
-                        }`}
-                      >
-                        {item.sublabel}
-                      </span>
-                    </div>
-
-                    {item.badge && (
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold transition-transform group-hover:scale-105 ${
-                          isActive
-                            ? 'bg-white text-zinc-950'
-                            : 'bg-zinc-200 text-zinc-800'
-                        }`}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </button>
-            )
-          })}
-        </nav>
+        {!isCollapsed && (
+          <div className="flex flex-col animate-fade-in overflow-hidden">
+            <span className="text-sm font-semibold text-zinc-900 leading-tight tracking-tight">
+              FundWatch
+            </span>
+            <span className="text-[11px] text-zinc-400 leading-tight">
+              Founder Outreach
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Bottom Section: Attached Resume Widget & Human Guard */}
-      <div className="p-3 border-t border-zinc-100 bg-zinc-50/70">
-        {!isCollapsed ? (
-          <div className="p-3 rounded-xl border border-zinc-200 bg-white shadow-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-zinc-100 text-zinc-800">
-                  <FileText size={14} />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-zinc-900 truncate max-w-[120px]">
-                    {resumeStatus?.filename || 'Suriyan.pdf'}
-                  </span>
-                  <span className="text-[10px] font-mono text-zinc-600">
-                    {resumeStatus?.size_kb ? `${resumeStatus.size_kb} KB` : '179.8 KB'} • Attached
-                  </span>
-                </div>
-              </div>
-              <span className="w-2 h-2 rounded-full bg-emerald-500" title="Resume Ready"></span>
-            </div>
+      {/* Nav */}
+      <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+        {navItems.map((item) => {
+          const Icon = item.icon
+          const isActive = activeTab === item.id
+          const pendingBadge =
+            item.id === 'outbox' && outboxStats?.draft ? outboxStats.draft : null
 
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              title={isCollapsed ? item.label : undefined}
+              className={`w-full group flex items-center gap-3 rounded-lg transition-all duration-150 ${
+                isCollapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
+              } ${
+                isActive
+                  ? 'bg-violet-50 text-violet-700'
+                  : 'text-zinc-500 hover:text-zinc-800 hover:bg-zinc-50'
+              }`}
+            >
+              {/* Active left indicator */}
+              {!isCollapsed && (
+                <span
+                  className={`absolute left-0 w-0.5 h-6 rounded-r-full bg-violet-600 transition-all duration-150 ${
+                    isActive ? 'opacity-100' : 'opacity-0'
+                  }`}
+                />
+              )}
+
+              <Icon
+                size={17}
+                strokeWidth={isActive ? 2.2 : 1.8}
+                className={`flex-shrink-0 transition-colors duration-150 ${
+                  isActive ? 'text-violet-600' : 'text-zinc-400 group-hover:text-zinc-600'
+                }`}
+              />
+
+              {!isCollapsed && (
+                <div className="flex-1 flex items-center justify-between min-w-0">
+                  <span
+                    className={`text-sm truncate ${
+                      isActive ? 'font-semibold text-violet-800' : 'font-medium'
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                  {pendingBadge !== null && (
+                    <span className="ml-2 px-1.5 py-0.5 rounded-full bg-violet-600 text-white text-[10px] font-mono font-bold leading-none">
+                      {pendingBadge}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {isCollapsed && pendingBadge !== null && (
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-violet-600" />
+              )}
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* Resume widget */}
+      {!isCollapsed && (
+        <div className="px-3 py-3 border-t border-zinc-100 animate-fade-in">
+          <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-zinc-200 flex items-center justify-center flex-shrink-0">
+                <FileText size={13} className="text-zinc-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-zinc-800 truncate">Suriyan.pdf</p>
+                {resumeStatus?.size_kb && (
+                  <p className="text-[10px] text-zinc-400">{resumeStatus.size_kb} KB</p>
+                )}
+              </div>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" title="Resume attached" />
+            </div>
             <a
               href="/api/outbox/resume/download"
               target="_blank"
               rel="noreferrer"
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-mono font-medium rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-800 transition shadow-xs"
+              className="flex items-center gap-1.5 w-full px-2.5 py-1.5 rounded-lg bg-white border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 text-zinc-600 text-xs font-medium transition-all duration-150"
             >
-              <span>Preview PDF</span>
-              <ExternalLink size={11} className="text-zinc-400" />
+              <ExternalLink size={11} />
+              <span>Preview Resume</span>
             </a>
-
-            <div className="pt-1 border-t border-zinc-100 flex items-center justify-between text-[10px] font-mono text-zinc-600">
-              <span className="flex items-center gap-1">
-                <Sparkles size={10} className="text-amber-500" /> Human Review Only
-              </span>
-              <span className="text-emerald-700 font-bold">100% Safe</span>
-            </div>
           </div>
-        ) : (
-          <a
-            href="/api/outbox/resume/download"
-            target="_blank"
-            rel="noreferrer"
-            title="Preview Attached Resume PDF"
-            className="flex items-center justify-center p-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-700 transition shadow-xs"
-          >
-            <FileText size={16} />
-          </a>
-        )}
+        </div>
+      )}
+
+      {/* Collapse toggle */}
+      <div className={`py-3 border-t border-zinc-100 flex ${isCollapsed ? 'justify-center' : 'px-3'}`}>
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-50 transition-all duration-150 w-full justify-center text-xs font-medium"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? (
+            <ChevronRight size={15} />
+          ) : (
+            <>
+              <ChevronLeft size={15} />
+              <span>Collapse</span>
+            </>
+          )}
+        </button>
       </div>
     </aside>
   )

@@ -1,19 +1,23 @@
 import React from 'react'
-import { CheckCircle2, Sparkles } from 'lucide-react'
 
 interface ToastProps {
   message: string | null
   onClose: () => void
 }
 
-export const Toast: React.FC<ToastProps> = ({ message }) => {
+export const Toast: React.FC<ToastProps> = ({ message, onClose }) => {
   if (!message) return null
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 animate-slideIn select-none">
-      <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-zinc-950 text-white font-mono text-xs font-medium shadow-float border border-zinc-800">
-        <Sparkles size={14} className="text-amber-400 shrink-0" />
-        <span>{message}</span>
+    <div className="fixed bottom-5 right-5 z-[100] animate-slide-in-up">
+      <div className="flex items-center gap-3 bg-zinc-900 text-white text-sm font-medium px-4 py-3 rounded-xl shadow-float max-w-sm">
+        <span className="flex-1">{message}</span>
+        <button
+          onClick={onClose}
+          className="text-zinc-400 hover:text-white transition-colors ml-2 text-lg leading-none"
+        >
+          ×
+        </button>
       </div>
     </div>
   )

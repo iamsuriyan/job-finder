@@ -1,11 +1,6 @@
 import React from 'react'
 import {
-  User,
   FileText,
-  ExternalLink,
-  Code2,
-  Briefcase,
-  GraduationCap,
   Sparkles,
   CheckCircle2,
   Mail,
@@ -13,6 +8,8 @@ import {
   Globe,
   Github,
   Linkedin,
+  Code2,
+  ExternalLink,
 } from 'lucide-react'
 import { ResumeStatus, ConfigSummary } from '../types'
 
@@ -37,41 +34,41 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="p-6 rounded-2xl border border-zinc-200 bg-white shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-5 animate-fade-in">
+      {/* Header Profile Card */}
+      <div className="bg-white border border-zinc-100 rounded-xl shadow-sm p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-start gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-zinc-950 flex items-center justify-center text-white text-2xl font-bold font-mono shadow-md">
+          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white text-xl font-bold font-mono shadow-sm flex-shrink-0">
             SD
           </div>
           <div className="space-y-1">
-            <h1 className="text-xl font-bold text-zinc-950 flex items-center gap-2">
-              <span>{candidate.name}</span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-mono font-semibold">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">{candidate.name}</h1>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
                 <CheckCircle2 size={12} /> Available
               </span>
-            </h1>
-            <p className="text-xs font-mono text-zinc-600 font-medium">{candidate.title}</p>
-            <div className="flex items-center gap-3 pt-1 text-xs text-zinc-500 font-mono flex-wrap">
-              <span className="flex items-center gap-1">
-                <Mail size={12} /> {candidate.email}
+            </div>
+            <p className="text-sm text-zinc-500 font-medium">{candidate.title}</p>
+            <div className="flex items-center gap-4 pt-1 text-xs text-zinc-400 flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <Mail size={13} /> {candidate.email}
               </span>
-              <span className="flex items-center gap-1">
-                <MapPin size={12} /> {candidate.location || 'India'}
+              <span className="flex items-center gap-1.5">
+                <MapPin size={13} /> {candidate.location || 'India'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Action Links */}
-        <div className="flex items-center gap-2.5 flex-wrap font-mono text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
           <a
             href="/api/outbox/resume/download"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-medium transition shadow-xs"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition shadow-xs"
           >
-            <FileText size={14} />
+            <FileText size={13} />
             <span>Download Resume PDF</span>
           </a>
 
@@ -80,7 +77,7 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
               href={candidate.portfolio}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-800 font-medium transition shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-medium transition shadow-xs"
             >
               <Globe size={13} />
               <span>Portfolio</span>
@@ -92,7 +89,7 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
               href={candidate.github}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-800 font-medium transition shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-medium transition shadow-xs"
             >
               <Github size={13} />
               <span>GitHub</span>
@@ -104,7 +101,7 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
               href={candidate.linkedin}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-800 font-medium transition shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-medium transition shadow-xs"
             >
               <Linkedin size={13} />
               <span>LinkedIn</span>
@@ -113,65 +110,65 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
         </div>
       </div>
 
-      {/* Experience Highlights Grounded in Candidate's Resume */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="p-5 rounded-2xl border border-zinc-200 bg-white shadow-xs space-y-3">
-          <div className="flex items-center gap-2 text-zinc-950 font-bold text-sm">
+      {/* Experience Highlights Grounded in Resume */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white border border-zinc-100 rounded-xl shadow-sm p-5 space-y-3">
+          <div className="flex items-center gap-2 text-zinc-900 font-semibold text-sm">
             <Sparkles size={16} className="text-amber-500" />
-            <span>Core Experience: IIT Bombay Startup (Cooper Compass)</span>
+            <span>IIT Bombay Startup (Cooper Compass)</span>
           </div>
-          <p className="text-xs text-zinc-600 leading-relaxed font-sans">
+          <p className="text-xs text-zinc-600 leading-relaxed">
             Built an end-to-end compliance agent grounded in official Indian regulatory data (DGFT, GST, CBIC) using hybrid retrieval, cheapest-path-first document extraction (vision OCR + deterministic parsers), and human-in-the-loop review controls.
           </p>
-          <div className="flex flex-wrap gap-1.5 font-mono text-[11px] pt-1">
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800">Vision OCR</span>
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800">Hybrid Retrieval</span>
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800">Regulatory Agents</span>
+          <div className="flex flex-wrap gap-1.5 text-xs pt-1">
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-mono text-[11px]">Vision OCR</span>
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-mono text-[11px]">Hybrid Retrieval</span>
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-mono text-[11px]">Regulatory Agents</span>
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl border border-zinc-200 bg-white shadow-xs space-y-3">
-          <div className="flex items-center gap-2 text-zinc-950 font-bold text-sm">
+        <div className="bg-white border border-zinc-100 rounded-xl shadow-sm p-5 space-y-3">
+          <div className="flex items-center gap-2 text-zinc-900 font-semibold text-sm">
             <Code2 size={16} className="text-blue-500" />
-            <span>Core Experience: Mindgryd (Voice & GenAI Scale)</span>
+            <span>Mindgryd (Voice & GenAI Scale)</span>
           </div>
-          <p className="text-xs text-zinc-600 leading-relaxed font-sans">
+          <p className="text-xs text-zinc-600 leading-relaxed">
             Integrated 25+ LLM, voice, STT, and TTS providers behind a unified connector layer serving live calls (~100 calls/day), and designed metadata-isolated multi-tenant RAG pipelines on pgvector & Weaviate.
           </p>
-          <div className="flex flex-wrap gap-1.5 font-mono text-[11px] pt-1">
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800">Live Voice / STT</span>
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800">pgvector RAG</span>
-            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-800">Multi-Tenancy</span>
+          <div className="flex flex-wrap gap-1.5 text-xs pt-1">
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-mono text-[11px]">Live Voice / STT</span>
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-mono text-[11px]">pgvector RAG</span>
+            <span className="px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-700 font-mono text-[11px]">Multi-Tenancy</span>
           </div>
         </div>
       </div>
 
       {/* Resume File Verification Card */}
-      <div className="p-5 rounded-2xl border border-zinc-200 bg-white shadow-xs space-y-4 font-mono text-xs">
+      <div className="bg-white border border-zinc-100 rounded-xl shadow-sm p-5 space-y-3 text-xs">
         <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-          <div className="flex items-center gap-2 font-bold text-zinc-950">
-            <FileText size={16} className="text-zinc-700" />
+          <div className="flex items-center gap-2 font-semibold text-zinc-900">
+            <FileText size={15} className="text-zinc-600" />
             <span>Attached Resume File Verification</span>
           </div>
-          <span className="inline-flex items-center gap-1 text-emerald-700 text-[11px] font-semibold">
+          <span className="inline-flex items-center gap-1 text-emerald-700 text-xs font-semibold">
             <CheckCircle2 size={12} /> Ready for Dispatch
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-zinc-600">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-zinc-600">
           <div>
-            <span className="text-zinc-400 block text-[10px]">FILE PATH</span>
-            <span className="text-zinc-950 font-medium break-all">{resumeStatus?.path || candidate.resume_path}</span>
+            <span className="text-zinc-400 block text-[11px] mb-0.5">FILE PATH</span>
+            <span className="text-zinc-900 font-mono text-xs break-all">{resumeStatus?.path || candidate.resume_path}</span>
           </div>
           <div>
-            <span className="text-zinc-400 block text-[10px]">FILE SIZE</span>
-            <span className="text-zinc-950 font-medium">
+            <span className="text-zinc-400 block text-[11px] mb-0.5">FILE SIZE</span>
+            <span className="text-zinc-900 font-mono text-xs">
               {resumeStatus?.size_kb ? `${resumeStatus.size_kb} KB` : '179.8 KB'} ({resumeStatus?.size_bytes || 184115} bytes)
             </span>
           </div>
           <div>
-            <span className="text-zinc-400 block text-[10px]">ATTACHMENT BEHAVIOR</span>
-            <span className="text-zinc-950 font-medium">Included in all job enquiries</span>
+            <span className="text-zinc-400 block text-[11px] mb-0.5">ATTACHMENT POLICY</span>
+            <span className="text-zinc-900 font-medium text-xs">Attached to every cold enquiry</span>
           </div>
         </div>
       </div>
