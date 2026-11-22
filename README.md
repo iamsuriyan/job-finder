@@ -1,92 +1,148 @@
-# 💰 fundwatch - Startup Funding Alert Bot
+# 💼 FundWatch — AI-Powered Startup Funding Tracker & Founder Job Outreach Engine
 
-A lightweight, self-hosted application that polls RSS/Atom news feeds for startup funding announcements, filters noise with intelligent keyword and geographic filtering, eliminates duplicate coverage across outlets with fuzzy matching, and sends instant alerts via Telegram, Slack, ntfy, or Email.
-
----
-
-## ✨ Features
-
-- **RSS/Atom Feed Polling**: Polite, conditional HTTP GET (`ETag` / `If-Modified-Since`) with exponential backoff retries.
-- **Funding Detection**: Accurate regex-based word-boundary filtering on titles and summaries (detects "raises", "funding", "seed round", "Series A/B/C", "bags", "secures", "closes", etc.).
-- **False-Positive Guard**: Filters out non-funding news such as "funding cuts", "raises concerns", "raises questions", "webinar", "podcast", and "opinion".
-- **Cross-Outlet Deduplication**:
-  - *Layer 1*: Persistent unique article IDs in SQLite.
-  - *Layer 2*: Fuzzy title matching via `rapidfuzz` (`token_set_ratio >= 90`) against articles seen in the past 48 hours. The same funding round reported by TechCrunch, Inc42, and Entrackr results in exactly **one** alert.
-- **Bootstrap Mode**: On an empty database, indexes current feed items without flooding your channels with old alerts.
-- **Pluggable Notifications**:
-  - **Telegram** (Direct Bot API)
-  - **Slack** (Incoming Webhooks)
-  - **ntfy** (Self-hosted or https://ntfy.sh)
-  - **Email** (SMTP with STARTTLS)
-- **Optional LLM Extraction**: Extract structured fields (`company`, `amount`, `currency`, `stage`, `investors`, `sector`, `location`) using Claude Sonnet with local DB caching.
-- **Built-in CLI**: Easily check feed health, preview alerts in dry-run mode, test notifiers, list stored articles, inspect stats, and export to CSV.
-- **Self-Host Anywhere**: Run with Docker, Docker Compose, systemd, crontab, or GitHub Actions.
+A self-hosted, lightweight platform that monitors RSS/Atom feeds for startup funding announcements, filters noise with intelligent keyword and geographic filtering, automatically discovers founding team email addresses, and generates personalized, high-converting cold job enquiry email drafts for human-in-the-loop review and SMTP dispatch.
 
 ---
 
-## 🚀 Quick Start (Under 10 Minutes)
+## ✨ Core Highlights & Features
 
-### 1. Clone & Set Up Virtual Environment
+### 1. 🔍 Automated Startup & Founding Team Email Discovery
+- **Domain Resolution Engine**: Resolves company domains via article link scraping, smart slug & root permutation against live DNS MX checks, and Clearbit Autocomplete.
+- **Mail Provider Identification**: Detects Google Workspace, Microsoft 365, Zoho Mail, Proton, and GoDaddy via DNS MX lookups.
+- **Multi-Founder Extraction**: Regex heuristics extract human founder names from complex press releases (*"Founded in 2017 by Prabhat Shrivastava"*, *"Founded in late 2025 by Apoorva Kumar, Manish Atri and Cyril Treacy"*).
+- **Pattern Permutations & Role Inboxes**: Generates high-probability founder email patterns (`first@domain`, `first.last@domain`, `firstlast@domain`) alongside executive inboxes (`founders@domain`, `ceo@domain`, `contact@domain`).
+- **Instant Port 25 Pre-check**: Caches network port 25 availability to eliminate 30–60s socket timeout delays on cloud or residential networks.
+- **Website Scraping & Hunter.io**: Scrapes public contact emails directly from company landing pages and enriches via Hunter.io API if configured.
+
+### 2. ✉️ Human-in-the-Loop Job Enquiry Outreach
+> [!IMPORTANT]
+> **Strict Human-in-the-Loop Review**: Emails are **never** dispatched automatically upon discovery. They are saved in `status = 'draft'` for human inspection, personalization, and explicit approval before sending.
+
+- **Candidate-Aligned Email Drafts**: Tailored cold email templates presenting actual engineering experience (2+ years Generative AI & Product Engineering at IIT Bombay-incubated Cooper Compass and Mindgryd).
+- **Context-Aware Salutations**: Personalized greeting using the founder's first name (`Hi Prabhat,`, `Hi Dhruv,`) or company team (`Hi VitusCare Team,`).
+- **Resume Attachment**: Automatically attaches candidate resume PDF (`Suriyan.pdf`) with live file verification, metadata inspection, and preview downloads.
+- **Configurable SMTP Dispatcher**: Supports custom SMTP hosts, TLS/STARTTLS authentication, custom from-addresses, and live connection test utilities.
+
+### 3. 🎨 Pure Light-Theme SaaS Dashboard
+- **Monochrome SaaS Aesthetic**: Pure light-mode interface with clear borders, font hierarchies, and zero dark-mode eye strain.
+- **Live Deal Cards**: Displays funding round details, domain badges, and discovered founder emails with 1-click clipboard copy.
+- **Inline Email Reader & Modal Editor**: Clean reader view to preview the formatted email exactly as the recipient sees it, with editable fields for subject, body, recipient, and attachments.
+- **Status & Health Banners**: Live animated banners for real-time background drafting and feed health indicators.
+
+### 4. 🚀 Complete CLI & One-Click Runner Script (`./run.sh`)
+- Executable bash launcher (`./run.sh`) for starting the UI, running poll cycles, continuous monitoring, outbox inspection, and test execution.
+- Dedicated `fundwatch outbox` CLI commands to manage and review drafts straight from the terminal.
+
+---
+
+## ⚡ Quick Start
+
+### 1. Clone & Set Up Environment
 
 ```bash
-git clone https://github.com/your-username/fundwatch.git
-cd fundwatch
+git clone git@github.com:iamsuriyan/job-finder.git
+cd job-finder
 
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 2. Configure Telegram (Recommended)
+### 2. Configure Environment (`.env`)
 
-1. Open Telegram and message [@BotFather](https://t.me/BotFather).
-2. Send `/newbot` and follow the instructions to create your bot. Copy the **HTTP API token**.
-3. Send a message to your new bot in Telegram.
-4. Obtain your numeric Chat ID:
-   - Message [@userinfobot](https://t.me/userinfobot) to get your ID, or
-   - Visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` and look for `"chat":{"id":123456789}`.
-5. Create your `.env` file:
-   ```bash
-   cp .env.example .env
-   ```
-6. Fill in your secrets in `.env`:
-   ```ini
-   TELEGRAM_BOT_TOKEN=1234567890:ABCdefGhIJKlmNoPQRstuVWXyz
-   TELEGRAM_CHAT_ID=123456789
-   DB_PATH=./data/fundwatch.db
-   LOG_LEVEL=INFO
-   ```
-
-### 3. Test Everything
-
+Copy the example configuration:
 ```bash
-# Verify feed sources are online and responsive
-fundwatch check-feeds
-
-# Send a test alert to your Telegram chat
-fundwatch test-notify
-
-# Preview formatted funding alerts without sending anything
-fundwatch once --dry-run
+cp .env.example .env
 ```
 
-### 4. Run the Daemon
+Edit `.env` with your settings:
+```ini
+DB_PATH=./data/fundwatch.db
+LOG_LEVEL=INFO
+
+# Candidate Profile
+CANDIDATE_NAME="Suriyan Dhanapal"
+CANDIDATE_TITLE="Generative AI & Product Engineer"
+CANDIDATE_EMAIL="suriyandhanapal@gmail.com"
+RESUME_PATH="/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
+
+# SMTP Settings for Outbox Dispatch (Optional)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=suriyandhanapal@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=suriyandhanapal@gmail.com
+
+# Optional Alerts & Enrichment
+FIND_FOUNDER_EMAILS=true
+HUNTER_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+```
+
+### 3. Launch Web Dashboard
+
+Run using the launcher script:
+```bash
+./run.sh ui
+```
+Or with the CLI:
+```bash
+fundwatch ui --port 8000
+```
+Open **`http://localhost:8000`** in your browser.
+
+---
+
+## 💻 Running with `./run.sh`
+
+The `./run.sh` script automates common workflows:
 
 ```bash
-fundwatch run
+./run.sh ui        # Start the clean light-theme dashboard on http://localhost:8000
+./run.sh poll      # Fetch latest funding rounds from all feeds and discover emails
+./run.sh monitor   # Run continuous background monitoring loop
+./run.sh outbox    # Review and list generated cold email drafts in terminal
+./run.sh test      # Run full unit and integration test suite (pytest)
+./run.sh help      # Display command help
 ```
 
 ---
 
-## 🛠️ Configuration (`config.yaml`)
+## ⌨️ CLI Command Reference
+
+### Outbox & Outreach Commands
+
+| Command | Description |
+|---|---|
+| `fundwatch outbox list` | List all pending, sent, and failed email drafts. |
+| `fundwatch outbox show <draft_id>` | Inspect draft subject, recipient email, attachment status, and body. |
+| `fundwatch outbox generate <article_id>` | Generate a personalized job enquiry draft for a funded startup. |
+| `fundwatch outbox send <draft_id>` | Send an email draft via SMTP (prompts for human confirmation, or pass `--yes`). |
+| `fundwatch outbox resume` | Check attached resume PDF existence, size, and metadata. |
+
+### Monitoring & Feed Commands
+
+| Command | Description |
+|---|---|
+| `fundwatch ui` | Launches the web dashboard at `http://localhost:8000`. |
+| `fundwatch run` | Continuous monitoring loop with configured polling interval & jitter. |
+| `fundwatch once` | Single poll cycle and exit (`--dry-run` to preview without notifying). |
+| `fundwatch check-feeds` | Test all configured RSS feeds for HTTP health and latency. |
+| `fundwatch stats` | Display article volumes and feed statistics. |
+| `fundwatch export --out deals.csv` | Export verified funding rounds and founder metadata to CSV. |
+
+---
+
+## ⚙️ Configuration Reference (`config.yaml`)
 
 ```yaml
-poll_interval_minutes: 20       # Minimum: 15 minutes
-jitter_seconds: 60              # Random jitter added/subtracted to sleep
-request_timeout_seconds: 15     # HTTP timeout in seconds
-max_items_per_feed: 50          # Max entries processed per feed
-max_article_age_days: 3         # Drop articles older than 3 days
-user_agent: "fundwatch/0.1 (personal funding alert bot)"
+poll_interval_minutes: 20
+jitter_seconds: 60
+request_timeout_seconds: 15
+max_items_per_feed: 50
+max_article_age_days: 7
+user_agent: "fundwatch/0.1 (personal startup tracker)"
 
 feeds:
   - name: Entrackr
@@ -107,7 +163,6 @@ filters:
     - funding
     - seed round
     - pre-seed
-    - pre-series a
     - series a
     - series b
     - series c
@@ -115,111 +170,40 @@ filters:
     - secures
     - closes
   match_in_summary: true
-  sector_keywords: []          # Optional: e.g. [ai, fintech, robotics]
-  geo_keywords: []             # Optional: e.g. [india, bengaluru]
   exclude_keywords:
     - webinar
     - podcast
     - opinion
 
-notifiers:
-  - type: telegram
-    enabled: true
-  - type: slack
-    enabled: false
-  - type: ntfy
-    enabled: false
-    topic: my-fundwatch-alerts
-  - type: email
-    enabled: false
-
-llm_extraction:
-  enabled: false
-  model: "claude-sonnet-5-5"
-  max_tokens: 400
+candidate_name: "Suriyan Dhanapal"
+candidate_title: "Generative AI & Product Engineer"
+candidate_email: "suriyandhanapal@gmail.com"
+resume_path: "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
+find_founder_emails: true
 ```
 
 ---
 
-## 💻 CLI Commands
+## 🧪 Testing & Quality Assurance
 
-| Command | Description |
-|---|---|
-| `fundwatch ui` | Launches the clean monochrome web dashboard at `http://127.0.0.1:8000`. |
-| `fundwatch run` | Runs continuous monitoring loop with configured interval & jitter. |
-| `fundwatch once` | Runs a single poll cycle and exits (ideal for cron / CI). Supports `--dry-run` and `--no-bootstrap`. |
-| `fundwatch check-feeds` | Tests all configured feed URLs, validates HTTP status and latest entry. |
-| `fundwatch test-notify` | Sends a verification alert through all enabled notifiers. |
-| `fundwatch list` | Displays stored articles table (`--limit 20`, `--matched-only`). |
-| `fundwatch stats` | Shows article counts per feed and daily volumes. |
-| `fundwatch export --out funding.csv` | Exports matched funding rounds joined with LLM extractions to CSV. |
-
----
-
-## 🐳 Docker Deployment
-
-### Using Docker Compose (Recommended)
-
-1. Populate `.env` with your secrets.
-2. Build and start the container in the background:
-   ```bash
-   docker compose up -d
-   ```
-3. View logs:
-   ```bash
-   docker compose logs -f
-   ```
-
-### Manual Docker Build
+The codebase maintains strict typing and 100% mocked external network tests:
 
 ```bash
-docker build -t fundwatch:latest .
-docker run -d \
-  --name fundwatch \
-  --restart unless-stopped \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  fundwatch:latest
-```
+# Run 92 unit and integration tests
+pytest tests/
 
----
-
-## ⏰ Cron & GitHub Actions Scheduling
-
-### System Cron Example
-
-To run every 30 minutes:
-```crontab
-*/30 * * * * cd /home/user/fundwatch && /home/user/fundwatch/.venv/bin/fundwatch once >> /var/log/fundwatch.log 2>&1
-```
-
-### GitHub Actions Workflow
-
-A preconfigured workflow is included in `.github/workflows/poll.yml`. Add your secrets (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, etc.) to **Settings > Secrets and variables > Actions**.
-
-> **Note on State Persistence in GitHub Actions:**
-> The included workflow caches `data/fundwatch.db` with `actions/cache`. GitHub Actions caches are purged after 7 days of inactivity. If you need 100% durable persistence without a server, store the SQLite database in an S3 bucket or commit it to a dedicated `state` branch.
-
----
-
-## 🧪 Running Tests
-
-```bash
-# Run pytest with 100% mocked network calls
-pytest
-
-# Code style and formatting checks
-ruff check .
-ruff format --check .
-
-# Strict type checking
+# Strict type checking with Mypy
 mypy src tests
+
+# Code style and formatting checks with Ruff
+ruff check src tests
+ruff format --check src tests
 ```
 
 ---
 
-## ❓ Troubleshooting
+## 🔒 Security & Privacy
 
-- **Telegram 400 / 401 Unauthorized**: Ensure `TELEGRAM_BOT_TOKEN` does not contain leading/trailing spaces and that `TELEGRAM_CHAT_ID` is your numeric ID.
-- **Feed 404 / 403 Forbidden**: Run `fundwatch check-feeds` to pinpoint failing URLs. Verify that the publisher has not changed their RSS path or blocked generic user agents (adjust `user_agent` in `config.yaml` if needed).
-- **No Alerts Sent on First Run**: By design, `fundwatch` runs in **bootstrap mode** when initialized with an empty database to prevent spamming notifications for old articles. To force alerts on run 1, pass `--no-bootstrap`.
+- **Human Review**: Cold emails are never dispatched automatically. Every draft requires human confirmation.
+- **Credential Safety**: SMTP credentials, API tokens, and bot secrets are loaded strictly from `.env` and environment variables.
+- **Local SQLite Storage**: Feed states, extractions, and draft copies remain on your local machine (`./data/fundwatch.db`).
