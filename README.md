@@ -23,11 +23,13 @@ A self-hosted, lightweight platform that monitors RSS/Atom feeds for startup fun
 - **Resume Attachment**: Automatically attaches candidate resume PDF (`Suriyan.pdf`) with live file verification, metadata inspection, and preview downloads.
 - **Configurable SMTP Dispatcher**: Supports custom SMTP hosts, TLS/STARTTLS authentication, custom from-addresses, and live connection test utilities.
 
-### 3. 🎨 Pure Light-Theme SaaS Dashboard
-- **Monochrome SaaS Aesthetic**: Pure light-mode interface with clear borders, font hierarchies, and zero dark-mode eye strain.
-- **Live Deal Cards**: Displays funding round details, domain badges, and discovered founder emails with 1-click clipboard copy.
-- **Inline Email Reader & Modal Editor**: Clean reader view to preview the formatted email exactly as the recipient sees it, with editable fields for subject, body, recipient, and attachments.
-- **Status & Health Banners**: Live animated banners for real-time background drafting and feed health indicators.
+### 3. ⚛️ Modern React + Vite Animated SaaS Dashboard
+- **Component Architecture**: Built with **React 18 + Vite + TypeScript + Tailwind CSS** with Lucide icons.
+- **Animated Collapsible Sidebar**: Left-docked animated navigation with sliding active pills, collapse/expand toggles (288px wide <-> 80px compact), live pulse indicator, and attached resume badge.
+- **Pure Light-Theme SaaS Aesthetic**: Designed with crisp white, slate/zinc surfaces, subtle shadows, and zero eye-strain.
+- **Interactive Email Reader & Modal Editor**: Full modal with dual **Reader Mode** (pixel-perfect email preview as sent) and **Editor Mode** (live editing of recipient, subject, body, attachment toggle) with human confirmation safeguard before dispatch.
+- **Live Deal Cards**: Deal stream with domain pills, extracted deal terms, and 1-click clipboard copy for founder emails.
+- **Live Feed & SMTP Health Monitors**: Real-time RSS inspector with latency measurements and live SMTP handshake tester.
 
 ### 4. 🚀 Complete CLI & One-Click Runner Script (`./run.sh`)
 - Executable bash launcher (`./run.sh`) for starting the UI, running poll cycles, continuous monitoring, outbox inspection, and test execution.
