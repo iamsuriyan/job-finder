@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   X,
   Send,
@@ -9,7 +9,6 @@ import {
   Check,
   Copy,
   ShieldCheck,
-  AlertCircle,
   Loader2,
 } from 'lucide-react'
 import { DraftEmail } from '../types'
@@ -39,6 +38,15 @@ export const EmailModal: React.FC<EmailModalProps> = ({
   const [isSending, setIsSending] = useState(false)
   const [showConfirmSend, setShowConfirmSend] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true)
+    setTimeout(() => {
+      setIsClosing(false)
+      onClose()
+    }, 160)
+  }, [onClose])
 
   useEffect(() => {
     if (draft) {
@@ -52,8 +60,26 @@ export const EmailModal: React.FC<EmailModalProps> = ({
       })
       setActiveTab(initialTab)
       setShowConfirmSend(false)
+      setIsClosing(false)
     }
   }, [draft, initialTab])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (showConfirmSend) {
+          setShowConfirmSend(false)
+        } else {
+          handleClose()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, showConfirmSend, handleClose])
 
   if (!isOpen || !draft) return null
 
@@ -69,8 +95,8 @@ export const EmailModal: React.FC<EmailModalProps> = ({
     try {
       await onSaveDraft(draft.id, formData)
       showToast('Draft changes saved successfully')
-    } catch (err: any) {
-      showToast(`Save error: ${err.message}`)
+    } catch (err: unknown) {
+      showToast(`Save error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsSaving(false)
     }
@@ -82,19 +108,33 @@ export const EmailModal: React.FC<EmailModalProps> = ({
       await onSaveDraft(draft.id, formData)
       await onSendDraft({ ...draft, ...formData } as DraftEmail)
       setShowConfirmSend(false)
-      onClose()
-    } catch (err: any) {
-      showToast(`Send error: ${err.message}`)
+      handleClose()
+    } catch (err: unknown) {
+      showToast(`Send error: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIsSending(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl my-8 rounded-2xl bg-white border border-zinc-200 shadow-2xl overflow-hidden flex flex-col max-h-[88vh] animate-fade-in relative">
-        {/* Top Header */}
-        <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/70">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !showConfirmSend) {
+          handleClose()
+        }
+      }}
+      className={`fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto ${
+        isClosing ? 'animate-backdrop-out' : 'animate-backdrop-in'
+      }`}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-3xl my-6 rounded-2xl bg-white border border-zinc-200 shadow-2xl overflow-hidden flex flex-col h-[780px] max-h-[92vh] relative transition-[height] duration-200 ease-out ${
+          isClosing ? 'animate-scale-out' : 'animate-scale-in'
+        }`}
+      >
+        {/* Top Header - Fixed height */}
+        <div className="h-16 px-6 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/70 flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-violet-600 flex items-center justify-center text-white flex-shrink-0 shadow-sm">
               <span className="text-sm">✉️</span>
@@ -139,7 +179,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({
 
             {/* Close Button */}
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 transition"
               title="Close modal"
             >
@@ -148,115 +188,116 @@ export const EmailModal: React.FC<EmailModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-5">
-          {activeTab === 'read' ? (
-            /* READER MODE */
-            <div className="space-y-4">
-              {/* Email Envelope Header */}
-              <div className="rounded-xl border border-zinc-100 bg-zinc-50/70 p-4 space-y-2 text-xs">
-                <div className="flex items-center">
-                  <span className="w-16 font-medium text-zinc-400">To:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-zinc-900">{formData.recipient_name || 'Founder'}</span>
-                    {formData.recipient_email ? (
-                      <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 font-mono text-[11px]">
-                        {formData.recipient_email}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-mono text-[11px]">
-                        Missing Email
-                      </span>
-                    )}
+        {/* Modal Body - Fixed scrollable container with smooth tab transition */}
+        <div className="p-6 overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div key={activeTab} className="h-full flex flex-col animate-fade-in min-h-0">
+            {activeTab === 'read' ? (
+              /* READER MODE */
+              <div className="space-y-4 flex flex-col h-full min-h-0">
+                {/* Email Envelope Header */}
+                <div className="rounded-xl border border-zinc-100 bg-zinc-50/70 p-4 space-y-2 text-xs flex-shrink-0">
+                  <div className="flex items-center">
+                    <span className="w-16 font-medium text-zinc-400">To:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-zinc-900">{formData.recipient_name || 'Founder'}</span>
+                      {formData.recipient_email ? (
+                        <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 font-mono text-[11px]">
+                          {formData.recipient_email}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-mono text-[11px]">
+                          Missing Email
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start">
+                    <span className="w-16 font-medium text-zinc-400 pt-0.5">Subject:</span>
+                    <span className="font-semibold text-zinc-900 flex-1">{formData.subject}</span>
+                  </div>
+
+                  <div className="flex items-center">
+                    <span className="w-16 font-medium text-zinc-400">Attachment:</span>
+                    <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                      <FileText size={12} />
+                      <span>Suriyan.pdf (Candidate Resume)</span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-start">
-                  <span className="w-16 font-medium text-zinc-400 pt-0.5">Subject:</span>
-                  <span className="font-semibold text-zinc-900 flex-1">{formData.subject}</span>
-                </div>
-
-                <div className="flex items-center">
-                  <span className="w-16 font-medium text-zinc-400">Attachment:</span>
-                  <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
-                    <FileText size={12} />
-                    <span>Suriyan.pdf (Candidate Resume)</span>
+                {/* Email Body */}
+                <div className="rounded-xl border border-zinc-100 bg-white p-5 shadow-xs flex-1 min-h-0 overflow-y-auto">
+                  <div className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed font-sans font-normal selection:bg-violet-100 selection:text-violet-900">
+                    {formData.body}
                   </div>
                 </div>
               </div>
+            ) : (
+              /* EDITOR MODE */
+              <div className="space-y-4 text-xs flex flex-col h-full min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-shrink-0">
+                  <div>
+                    <label className="block text-zinc-600 font-medium mb-1.5">Recipient Name</label>
+                    <input
+                      type="text"
+                      value={formData.recipient_name || ''}
+                      onChange={(e) => setFormData({ ...formData, recipient_name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs font-mono"
+                    />
+                  </div>
 
-              {/* Email Body */}
-              <div className="rounded-xl border border-zinc-100 bg-white p-5 shadow-xs">
-                <div className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed font-sans font-normal selection:bg-violet-100 selection:text-violet-900">
-                  {formData.body}
+                  <div>
+                    <label className="block text-zinc-600 font-medium mb-1.5">Recipient Email</label>
+                    <input
+                      type="email"
+                      value={formData.recipient_email || ''}
+                      onChange={(e) => setFormData({ ...formData, recipient_email: e.target.value })}
+                      placeholder="founder@company.com"
+                      className="w-full px-3 py-2 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs font-mono"
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
-          ) : (
-            /* EDITOR MODE */
-            <div className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-zinc-600 font-medium mb-1.5">Recipient Name</label>
+
+                <div className="flex-shrink-0">
+                  <label className="block text-zinc-600 font-medium mb-1.5">Subject Line</label>
                   <input
                     type="text"
-                    value={formData.recipient_name || ''}
-                    onChange={(e) => setFormData({ ...formData, recipient_name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs font-mono"
+                    value={formData.subject || ''}
+                    onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs font-mono font-medium"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-zinc-600 font-medium mb-1.5">Recipient Email</label>
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <label className="block text-zinc-600 font-medium mb-1.5 flex-shrink-0">Email Body</label>
+                  <textarea
+                    value={formData.body || ''}
+                    onChange={(e) => setFormData({ ...formData, body: e.target.value })}
+                    className="w-full flex-1 min-h-[160px] p-3 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs leading-relaxed font-sans resize-none"
+                    placeholder="Email body text..."
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 flex-shrink-0">
                   <input
-                    type="email"
-                    value={formData.recipient_email || ''}
-                    onChange={(e) => setFormData({ ...formData, recipient_email: e.target.value })}
-                    placeholder="founder@company.com"
-                    className="w-full px-3 py-2 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs font-mono"
+                    type="checkbox"
+                    id="attach_resume_toggle"
+                    checked={formData.attach_resume ?? true}
+                    onChange={(e) => setFormData({ ...formData, attach_resume: e.target.checked })}
+                    className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
                   />
+                  <label htmlFor="attach_resume_toggle" className="text-xs text-zinc-700 cursor-pointer select-none">
+                    Attach candidate resume PDF (<strong>Suriyan.pdf</strong>) on dispatch
+                  </label>
                 </div>
               </div>
-
-              <div>
-                <label className="block text-zinc-600 font-medium mb-1.5">Subject Line</label>
-                <input
-                  type="text"
-                  value={formData.subject || ''}
-                  onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs font-mono font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-zinc-600 font-medium mb-1.5">Email Body</label>
-                <textarea
-                  rows={10}
-                  value={formData.body || ''}
-                  onChange={(e) => setFormData({ ...formData, body: e.target.value })}
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-zinc-200 bg-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition text-xs leading-relaxed font-sans"
-                  placeholder="Email body text..."
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="attach_resume_toggle"
-                  checked={formData.attach_resume ?? true}
-                  onChange={(e) => setFormData({ ...formData, attach_resume: e.target.checked })}
-                  className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                />
-                <label htmlFor="attach_resume_toggle" className="text-xs text-zinc-700 cursor-pointer select-none">
-                  Attach candidate resume PDF (<strong>Suriyan.pdf</strong>) on dispatch
-                </label>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Modal Footer Controls */}
-        <div className="px-6 py-4 border-t border-zinc-100 bg-zinc-50/70 flex items-center justify-between">
+        {/* Modal Footer Controls - Fixed height */}
+        <div className="h-16 px-6 border-t border-zinc-100 bg-zinc-50/70 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopyBody}
@@ -280,7 +321,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-3.5 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-700 transition"
             >
               Close
@@ -300,8 +341,18 @@ export const EmailModal: React.FC<EmailModalProps> = ({
 
         {/* Human Confirmation Dialog Overlay */}
         {showConfirmSend && (
-          <div className="absolute inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-6 animate-fade-in">
-            <div className="w-full max-w-md p-6 rounded-2xl bg-white border border-zinc-200 shadow-2xl space-y-4">
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !isSending) {
+                setShowConfirmSend(false)
+              }
+            }}
+            className="absolute inset-0 z-60 bg-black/50 backdrop-blur-xs flex items-center justify-center p-6 animate-backdrop-in"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md p-6 rounded-2xl bg-white border border-zinc-200 shadow-2xl space-y-4 animate-scale-in"
+            >
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">
                   <ShieldCheck size={20} />

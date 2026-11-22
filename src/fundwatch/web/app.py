@@ -231,7 +231,7 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
         return FileResponse(
             str(p),
             media_type="application/pdf",
-            filename=f"{settings.candidate_name.replace(' ', '_')}_Resume.pdf",
+            content_disposition_type="inline",
         )
 
     @app.get("/api/outbox/{draft_id}")

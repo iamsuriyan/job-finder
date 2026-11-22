@@ -34,7 +34,7 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 w-full animate-fade-in">
       {/* Header Profile Card */}
       <div className="bg-white border border-zinc-100 rounded-xl shadow-sm p-6 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-start gap-4">
@@ -130,7 +130,7 @@ export const CandidateProfile: React.FC<CandidateProfileProps> = ({
         <div className="bg-white border border-zinc-100 rounded-xl shadow-sm p-5 space-y-3">
           <div className="flex items-center gap-2 text-zinc-900 font-semibold text-sm">
             <Code2 size={16} className="text-blue-500" />
-            <span>Mindgryd (Voice & GenAI Scale)</span>
+            <span>Mindgryd (Voice & Systems Scale)</span>
           </div>
           <p className="text-xs text-zinc-600 leading-relaxed">
             Integrated 25+ LLM, voice, STT, and TTS providers behind a unified connector layer serving live calls (~100 calls/day), and designed metadata-isolated multi-tenant RAG pipelines on pgvector & Weaviate.

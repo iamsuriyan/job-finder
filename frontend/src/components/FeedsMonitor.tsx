@@ -51,7 +51,7 @@ export const FeedsMonitor: React.FC<FeedsMonitorProps> = ({
   const healthyCount = feeds.filter((f) => f.healthy).length
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 w-full animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

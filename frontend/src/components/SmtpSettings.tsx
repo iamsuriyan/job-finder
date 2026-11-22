@@ -38,7 +38,7 @@ export const SmtpSettings: React.FC<SmtpSettingsProps> = ({ config, showToast })
   }
 
   return (
-    <div className="space-y-5 max-w-3xl animate-fade-in">
+    <div className="space-y-5 w-full animate-fade-in">
       {/* Header */}
       <div>
         <h1 className="text-xl font-semibold text-zinc-900 tracking-tight flex items-center gap-2.5">

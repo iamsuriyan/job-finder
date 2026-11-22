@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  Zap,
+  Layers,
   Flame,
   Inbox,
   Rss,
@@ -76,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
       >
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-          <Zap size={15} className="text-white" strokeWidth={2.5} />
+          <Layers size={15} className="text-white" strokeWidth={2.5} />
         </div>
         {!isCollapsed && (
           <div className="flex flex-col animate-fade-in overflow-hidden">

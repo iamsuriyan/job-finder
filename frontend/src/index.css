@@ -52,6 +52,42 @@ body {
   animation: slideInUp 0.25s ease-out forwards;
 }
 
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes scaleOut {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.96) translateY(6px); }
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes backdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-out {
+  animation: scaleOut 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-backdrop-in {
+  animation: backdropIn 0.2s ease-out forwards;
+}
+
+.animate-backdrop-out {
+  animation: backdropOut 0.15s ease-in forwards;
+}
+
 /* Skeleton shimmer */
 .skeleton {
   background: linear-gradient(90deg, #f4f4f5 25%, #e9e9eb 50%, #f4f4f5 75%);

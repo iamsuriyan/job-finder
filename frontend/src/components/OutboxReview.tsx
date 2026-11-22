@@ -107,7 +107,7 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
   ]
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 w-full animate-fade-in">
       {/* Human Guarantee Banner */}
       <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
         <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center flex-shrink-0 shadow-sm">
@@ -207,7 +207,10 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
             return (
               <div
                 key={draft.id}
-                className="bg-white border border-zinc-100 rounded-xl shadow-sm hover:shadow-md hover:border-zinc-200 transition-all duration-200"
+                onClick={() => {
+                  if (!isDeleting) onOpenDraft(draft, 'read')
+                }}
+                className="bg-white border border-zinc-100 rounded-xl shadow-sm hover:shadow-md hover:border-zinc-300 transition-all duration-200 cursor-pointer group"
               >
                 <div className="flex items-center gap-4 p-4">
                   {/* Status dot */}
@@ -216,7 +219,9 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-zinc-900">{draft.company}</span>
+                      <span className="text-sm font-semibold text-zinc-900 group-hover:text-violet-700 transition-colors">
+                        {draft.company}
+                      </span>
                       {draft.recipient_email && (
                         <span className="text-xs text-zinc-400 font-mono">{draft.recipient_email}</span>
                       )}
@@ -231,32 +236,51 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
 
                   {/* Actions */}
                   {isDeleting ? (
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div
+                      className="flex items-center gap-2 flex-shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <span className="text-xs text-zinc-500">Delete?</span>
                       <button
-                        onClick={() => { onDeleteDraft(draft.id); setDeletingId(null) }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeleteDraft(draft.id)
+                          setDeletingId(null)
+                        }}
                         className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white transition-all"
                       >
                         Yes
                       </button>
                       <button
-                        onClick={() => setDeletingId(null)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeletingId(null)
+                        }}
                         className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 transition-all"
                       >
                         Cancel
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <div
+                      className="flex items-center gap-1.5 flex-shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
-                        onClick={() => onOpenDraft(draft, 'read')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onOpenDraft(draft, 'read')
+                        }}
                         className="p-2 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-all"
                         title="Review email"
                       >
                         <Eye size={15} />
                       </button>
                       <button
-                        onClick={() => onOpenDraft(draft, 'edit')}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onOpenDraft(draft, 'edit')
+                        }}
                         className="p-2 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-all"
                         title="Edit email"
                       >
@@ -264,8 +288,11 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
                       </button>
                       {draft.status === 'draft' && (
                         <button
-                          onClick={() => onSendDraft(draft)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white transition-all"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onSendDraft(draft)
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white transition-all shadow-xs"
                           title="Review & send"
                         >
                           <Send size={12} />
@@ -273,7 +300,10 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
                         </button>
                       )}
                       <button
-                        onClick={() => setDeletingId(draft.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeletingId(draft.id)
+                        }}
                         className="p-2 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 transition-all"
                         title="Delete draft"
                       >

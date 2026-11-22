@@ -254,7 +254,7 @@ export const App: React.FC = () => {
 
         {/* Tab Content Body */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
-          <div className="max-w-6xl mx-auto">
+          <div className="w-full">
             {activeTab === 'deals' && (
               <DealsFeed
                 articles={articles}
