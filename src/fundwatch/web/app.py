@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import Body, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from fundwatch import __version__
 from fundwatch.db import Database
@@ -20,7 +21,7 @@ from fundwatch.models import Extraction, Settings
 from fundwatch.notifiers import build_notifiers
 from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
 from fundwatch.pipeline import run_cycle
-from fundwatch.web.templates import get_dashboard_html
+from fundwatch.web.templates import get_assets_dir, get_dashboard_html
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,10 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    assets_dir = get_assets_dir()
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
     @app.get("/", response_class=HTMLResponse)
     @app.head("/", response_class=HTMLResponse)

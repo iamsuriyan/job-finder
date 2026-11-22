@@ -36,13 +36,22 @@ case "$COMMAND" in
     ui|web|dashboard)
         PORT="${PORT:-8000}"
         HOST="${HOST:-0.0.0.0}"
+        if [ ! -d "$SCRIPT_DIR/src/fundwatch/web/static/assets" ] && [ -d "$SCRIPT_DIR/frontend" ]; then
+            echo "📦 Building modern React+Vite frontend..."
+            (cd "$SCRIPT_DIR/frontend" && npm run build)
+        fi
         echo "=========================================================="
-        echo " 🚀 Starting fundwatch Monochrome Web Dashboard"
+        echo " 🚀 Starting FundWatch Animated React Web Dashboard"
         echo " 🌐 URL: http://localhost:${PORT}"
         echo " 📁 Resume: /home/viper/Downloads/Resumes/2+/Suriyan.pdf"
         echo " ✉️  Human Review Outbox enabled"
         echo "=========================================================="
         exec fundwatch ui --host "$HOST" --port "$PORT" "$@"
+        ;;
+
+    build-ui|build-frontend)
+        echo "📦 Building React+Vite UI bundle..."
+        (cd "$SCRIPT_DIR/frontend" && npm run build)
         ;;
 
     poll|once)
