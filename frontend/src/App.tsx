@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { DealsFeed } from './components/DealsFeed'
 import { OutboxReview } from './components/OutboxReview'
@@ -9,6 +9,8 @@ import { EmailModal } from './components/EmailModal'
 import { Toast } from './components/Toast'
 import {
   Article,
+  CandidateProfile as ICandidateProfile,
+  ContactedRecipient,
   DraftEmail,
   DraftStats,
   FeedInfo,
@@ -21,9 +23,11 @@ import {
   fetchFeeds,
   fetchConfig,
   fetchResumeStatus,
+  fetchCandidateProfile,
   generateDraft,
   updateDraft,
   deleteDraft,
+  dismissArticle,
   sendDraft,
 } from './api/client'
 import { ExternalLink } from 'lucide-react'
@@ -39,9 +43,11 @@ export const App: React.FC = () => {
   const [loadingArticles, setLoadingArticles] = useState<boolean>(false)
   const [feedFilter, setFeedFilter] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [stageFilter, setStageFilter] = useState<string>('all_early')
 
   const [drafts, setDrafts] = useState<DraftEmail[]>([])
   const [outboxStats, setOutboxStats] = useState<DraftStats>({ total: 0, draft: 0, sent: 0, failed: 0 })
+  const [contactedRecipients, setContactedRecipients] = useState<Record<string, ContactedRecipient>>({})
   const [loadingOutbox, setLoadingOutbox] = useState<boolean>(false)
   const [outboxStatusFilter, setOutboxStatusFilter] = useState<string>('')
 
@@ -50,6 +56,7 @@ export const App: React.FC = () => {
 
   const [resumeStatus, setResumeStatus] = useState<ResumeStatus | null>(null)
   const [config, setConfig] = useState<ConfigSummary | null>(null)
+  const [candidateProfile, setCandidateProfile] = useState<ICandidateProfile | null>(null)
 
   // Draft modal & interaction states
   const [selectedDraft, setSelectedDraft] = useState<DraftEmail | null>(null)
@@ -77,6 +84,7 @@ export const App: React.FC = () => {
         matched_only: true,
         search: searchQuery || undefined,
         feed: feedFilter || undefined,
+        stage: stageFilter === 'all' ? undefined : stageFilter,
       })
       setArticles(res.items || [])
       setTotalArticles(res.total || 0)
@@ -95,6 +103,9 @@ export const App: React.FC = () => {
       setDrafts(res.items || [])
       if (res.stats) {
         setOutboxStats(res.stats)
+      }
+      if (res.contacted_recipients) {
+        setContactedRecipients(res.contacted_recipients)
       }
     } catch (err: unknown) {
       showToast(`Failed to load outbox: ${err instanceof Error ? err.message : String(err)}`)
@@ -119,12 +130,14 @@ export const App: React.FC = () => {
   // Load metadata
   const loadMetadata = async () => {
     try {
-      const [rStatus, cfg] = await Promise.all([
+      const [rStatus, cfg, cand] = await Promise.all([
         fetchResumeStatus().catch(() => null),
         fetchConfig().catch(() => null),
+        fetchCandidateProfile().catch(() => null),
       ])
       if (rStatus) setResumeStatus(rStatus)
       if (cfg) setConfig(cfg)
+      if (cand) setCandidateProfile(cand)
     } catch {
       // Ignore initial metadata fetch errors
     }
@@ -132,7 +145,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadArticles()
-  }, [articlesPage, feedFilter, searchQuery])
+  }, [articlesPage, feedFilter, searchQuery, stageFilter])
 
   useEffect(() => {
     loadOutbox()
@@ -175,8 +188,8 @@ export const App: React.FC = () => {
   }
 
   // Send draft via SMTP
-  const handleSendDraft = async (draft: DraftEmail) => {
-    const res = await sendDraft(draft.id)
+  const handleSendDraft = async (draft: DraftEmail, force: boolean = false) => {
+    const res = await sendDraft(draft.id, force)
     showToast(res.message || `Dispatched enquiry to ${draft.recipient_email}!`)
     await loadOutbox()
   }
@@ -187,6 +200,28 @@ export const App: React.FC = () => {
     showToast('Draft deleted successfully')
     await loadOutbox()
   }
+
+  // Dismiss deal from active feed
+  const handleDismissArticle = async (articleId: string) => {
+    try {
+      await dismissArticle(articleId)
+      showToast('Deal dismissed from active feed')
+      await loadArticles()
+    } catch (err: unknown) {
+      showToast(`Failed to dismiss deal: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  // Map drafts by company for 1-click View Draft button in deals feed
+  const draftsByCompany = useMemo(() => {
+    const map: Record<string, DraftEmail> = {}
+    for (const d of drafts) {
+      if (d.company) {
+        map[d.company.trim().toLowerCase()] = d
+      }
+    }
+    return map
+  }, [drafts])
 
   const tabLabels: Record<string, string> = {
     deals: 'Funding Deals',
@@ -200,7 +235,9 @@ export const App: React.FC = () => {
     deals: `${totalArticles} verified rounds`,
     outbox: `${outboxStats.draft} awaiting approval`,
     feeds: `${feeds.length} active feeds`,
-    profile: 'Suriyan Dhanapal · Product Engineer',
+    profile: candidateProfile
+      ? `${candidateProfile.name} · ${candidateProfile.title || 'Product Engineer'}`
+      : 'Candidate Profile',
     settings: config?.smtp?.configured ? 'Connected' : 'Ready to configure',
   }
 
@@ -214,6 +251,7 @@ export const App: React.FC = () => {
         setIsCollapsed={setIsCollapsed}
         outboxStats={outboxStats}
         resumeStatus={resumeStatus}
+        candidateProfile={candidateProfile}
       />
 
       {/* Main Content Area */}
@@ -246,7 +284,7 @@ export const App: React.FC = () => {
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition shadow-xs"
             >
-              <span>Suriyan.pdf</span>
+              <span>{candidateProfile?.resume_filename || resumeStatus?.filename || 'Resume.pdf'}</span>
               <ExternalLink size={11} className="text-zinc-400" />
             </a>
           </div>
@@ -264,6 +302,8 @@ export const App: React.FC = () => {
                 setPage={setArticlesPage}
                 onRefresh={loadArticles}
                 onDraftJobEnquiry={handleDraftJobEnquiry}
+                onOpenDraft={handleOpenDraft}
+                onDismissArticle={handleDismissArticle}
                 generatingArticleId={generatingArticleId}
                 showToast={showToast}
                 feedFilter={feedFilter}
@@ -271,6 +311,10 @@ export const App: React.FC = () => {
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
                 feeds={feeds}
+                contactedRecipients={contactedRecipients}
+                stageFilter={stageFilter}
+                setStageFilter={setStageFilter}
+                draftsByCompany={draftsByCompany}
               />
             )}
 
@@ -285,6 +329,7 @@ export const App: React.FC = () => {
                 onRefresh={loadOutbox}
                 statusFilter={outboxStatusFilter}
                 setStatusFilter={setOutboxStatusFilter}
+                contactedRecipients={contactedRecipients}
               />
             )}
 
@@ -300,7 +345,13 @@ export const App: React.FC = () => {
             {activeTab === 'profile' && (
               <CandidateProfile
                 resumeStatus={resumeStatus}
-                config={config}
+                candidateProfile={candidateProfile}
+                onProfileUpdated={(updated) => {
+                  setCandidateProfile(updated)
+                  loadMetadata()
+                  loadOutbox()
+                }}
+                showToast={showToast}
               />
             )}
 
@@ -323,6 +374,7 @@ export const App: React.FC = () => {
         onSendDraft={handleSendDraft}
         initialTab={modalTab}
         showToast={showToast}
+        contactedRecipients={contactedRecipients}
       />
 
       {/* Toast Alert */}

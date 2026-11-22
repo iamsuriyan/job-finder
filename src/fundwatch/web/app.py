@@ -9,21 +9,24 @@ import smtplib
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, Query, status
+from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from fundwatch import __version__
-from fundwatch.db import Database
+from fundwatch.db import Database, utc_now_iso
 from fundwatch.fetcher import inspect_feed
-from fundwatch.models import Extraction, Settings
+from fundwatch.models import CandidateProfile, Extraction, Settings
 from fundwatch.notifiers import build_notifiers
 from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
 from fundwatch.pipeline import run_cycle
+from fundwatch.resume_parser import parse_resume_to_profile
 from fundwatch.web.templates import get_assets_dir, get_dashboard_html
 
 logger = logging.getLogger(__name__)
+
+RESUMES_DIR = Path("data/resumes")
 
 
 def create_app(settings: Settings, db: Database) -> FastAPI:
@@ -81,6 +84,9 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             "total": stats_data["total"],
             "matched": stats_data["matched"],
             "notified": stats_data["notified"],
+            "first_funding_count": stats_data.get("first_funding_count", 0),
+            "seed_count": stats_data.get("seed_count", 0),
+            "series_a_count": stats_data.get("series_a_count", 0),
             "total_feeds": len(settings.feeds),
             "healthy_feeds": healthy_count,
             "by_feed": stats_data["by_feed"],
@@ -209,28 +215,174 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
         """List email drafts and outbox statistics."""
         drafts = db.list_drafts(status=status, limit=limit)
         draft_stats = db.get_draft_stats()
+        contacted = db.get_contacted_recipients_map()
         return {
             "items": [d.model_dump() for d in drafts],
             "stats": draft_stats,
+            "contacted_recipients": contacted,
         }
+
+    @app.get("/api/candidate/profile")
+    def get_candidate_profile() -> dict[str, Any]:
+        """Fetch active candidate profile and resume status."""
+        profile = db.get_candidate_profile("active")
+        if not profile:
+            profile = CandidateProfile(
+                id="active",
+                name=settings.candidate_name,
+                title=settings.candidate_title,
+                email=settings.candidate_email,
+                phone=settings.candidate_phone,
+                location=settings.candidate_location,
+                portfolio=settings.candidate_portfolio,
+                github=settings.candidate_github,
+                linkedin=settings.candidate_linkedin,
+                resume_path=settings.resume_path,
+                resume_filename=(
+                    Path(settings.resume_path).name if settings.resume_path else "Resume.pdf"
+                ),
+            )
+        return profile.model_dump()
+
+    @app.post("/api/candidate/resume/upload")
+    async def upload_candidate_resume(file: UploadFile = File(...)) -> dict[str, Any]:
+        """Upload and deterministically parse candidate resume PDF."""
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only PDF resume files (.pdf) are supported.",
+            )
+
+        RESUMES_DIR.mkdir(parents=True, exist_ok=True)
+        clean_name = Path(file.filename).name
+        target_path = RESUMES_DIR / clean_name
+        content = await file.read()
+        target_path.write_bytes(content)
+
+        profile = parse_resume_to_profile(
+            pdf_source=content,
+            resume_path=str(target_path),
+            resume_filename=clean_name,
+        )
+        db.save_candidate_profile(profile)
+
+        # Sync in-memory settings
+        settings.resume_path = str(target_path)
+        settings.candidate_name = profile.name
+        settings.candidate_title = profile.title
+        settings.candidate_email = profile.email
+        settings.candidate_phone = profile.phone
+        settings.candidate_location = profile.location
+        settings.candidate_portfolio = profile.portfolio
+        settings.candidate_github = profile.github
+        settings.candidate_linkedin = profile.linkedin
+
+        _sync_pending_drafts(profile)
+
+        return profile.model_dump()
+
+    def _sync_pending_drafts(cand_profile: CandidateProfile) -> int:
+        """Update subject, body, and resume on all drafts currently in 'draft' status."""
+        drafts = db.list_drafts(status="draft")
+        count = 0
+        for d in drafts:
+            if not d.article_id:
+                continue
+            article = db.get_article(d.article_id)
+            if not article:
+                continue
+            extraction = db.get_extraction(d.article_id)
+            new_draft = generate_job_enquiry(article, extraction, settings, candidate=cand_profile)
+            db.update_draft(
+                draft_id=d.id,
+                subject=new_draft.subject,
+                body=new_draft.body,
+                resume_path=new_draft.resume_path,
+                recipient_name=new_draft.recipient_name,
+                recipient_email=new_draft.recipient_email,
+            )
+            count += 1
+        return count
+
+    @app.put("/api/candidate/profile")
+    def update_candidate_profile(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+        """Update active candidate profile fields and pitch bullets."""
+        existing = db.get_candidate_profile("active")
+        if not existing:
+            existing = CandidateProfile(
+                name=settings.candidate_name,
+                title=settings.candidate_title,
+                email=settings.candidate_email,
+                phone=settings.candidate_phone,
+                location=settings.candidate_location,
+                portfolio=settings.candidate_portfolio,
+                github=settings.candidate_github,
+                linkedin=settings.candidate_linkedin,
+                resume_path=settings.resume_path,
+            )
+
+        valid_fields = {k: v for k, v in payload.items() if hasattr(existing, k)}
+        updated = existing.model_copy(update=valid_fields)
+        updated.updated_at = utc_now_iso()
+        db.save_candidate_profile(updated)
+
+        # Sync in-memory settings
+        settings.candidate_name = updated.name
+        settings.candidate_title = updated.title
+        settings.candidate_email = updated.email
+        settings.candidate_phone = updated.phone
+        settings.candidate_location = updated.location
+        settings.candidate_portfolio = updated.portfolio
+        settings.candidate_github = updated.github
+        settings.candidate_linkedin = updated.linkedin
+        if updated.resume_path:
+            settings.resume_path = updated.resume_path
+
+        # Automatically propagate title, bullets, and contact info to all pending drafts
+        _sync_pending_drafts(updated)
+
+        return updated.model_dump()
+
+    @app.post("/api/candidate/regenerate-drafts")
+    def regenerate_drafts_with_profile() -> dict[str, Any]:
+        """Batch update all pending outbox drafts with the active candidate profile."""
+        profile = db.get_candidate_profile("active")
+        if not profile:
+            profile = CandidateProfile(
+                name=settings.candidate_name,
+                title=settings.candidate_title,
+                resume_path=settings.resume_path,
+            )
+
+        count = _sync_pending_drafts(profile)
+        return {"updated_count": count}
 
     @app.get("/api/outbox/resume/status")
     def get_resume_status() -> dict[str, Any]:
         """Check status and metadata for candidate's resume file."""
-        return check_resume(settings.resume_path)
+        profile = db.get_candidate_profile("active")
+        target_path = (
+            profile.resume_path if profile and profile.resume_path else settings.resume_path
+        )
+        return check_resume(target_path)
 
     @app.get("/api/outbox/resume/download")
     def download_resume() -> FileResponse:
         """Download or view the candidate's resume PDF."""
-        p = Path(settings.resume_path)
+        profile = db.get_candidate_profile("active")
+        target_path = (
+            profile.resume_path if profile and profile.resume_path else settings.resume_path
+        )
+        p = Path(target_path)
         if not p.is_file():
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Resume file not found at {settings.resume_path}",
+                detail=f"Resume file not found at {target_path}",
             )
         return FileResponse(
             str(p),
             media_type="application/pdf",
+            filename=p.name,
             content_disposition_type="inline",
         )
 
@@ -268,7 +420,34 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
 
         # Check if already generated unless force=True
         existing = db.get_draft_by_article(target_id) or db.get_draft_by_article(article.id)
+        if not existing:
+            from fundwatch.email_finder import extract_company_name
+
+            ext_meta = db.get_extraction(article.id)
+            meta_comp = ext_meta.company if ext_meta and ext_meta.company else ""
+            cand_comp = meta_comp or extract_company_name(
+                article.title, article.summary or ""
+            )
+            existing = db.get_draft_by_company(cand_comp)
+
+        active_profile = db.get_candidate_profile("active")
         if existing and not force and existing.recipient_email:
+            # If candidate profile title or name has been updated, refresh the existing draft
+            if existing.status == "draft" and active_profile and (
+                active_profile.title not in existing.subject
+                or active_profile.name not in existing.subject
+            ):
+                extraction = db.get_extraction(article.id)
+                new_draft = generate_job_enquiry(
+                    article, extraction, settings, candidate=active_profile
+                )
+                updated = db.update_draft(
+                    draft_id=existing.id,
+                    subject=new_draft.subject,
+                    body=new_draft.body,
+                    resume_path=new_draft.resume_path,
+                )
+                return (updated or existing).model_dump()
             return existing.model_dump()
 
         extraction = db.get_extraction(article.id)
@@ -307,7 +486,8 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
 
             db.save_extraction(extraction)
 
-        draft = generate_job_enquiry(article, extraction, settings)
+        active_profile = db.get_candidate_profile("active")
+        draft = generate_job_enquiry(article, extraction, settings, candidate=active_profile)
 
         if existing:
             updated = db.update_draft(
@@ -324,6 +504,12 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
 
         db.create_draft(draft)
         return draft.model_dump()
+
+    @app.post("/api/articles/{article_id:path}/dismiss")
+    def dismiss_article_endpoint(article_id: str) -> dict[str, Any]:
+        """Dismiss an article so it is removed from active deals."""
+        db.dismiss_article(article_id)
+        return {"success": True, "article_id": article_id}
 
     @app.put("/api/outbox/{draft_id}")
     def update_draft_by_id(
@@ -353,8 +539,16 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
         return {"ok": True, "draft_id": draft_id}
 
+    @app.get("/api/outbox/recipients/contacted")
+    def get_contacted_recipients() -> dict[str, Any]:
+        """List all recipients who have already been sent outreach emails."""
+        return db.get_contacted_recipients_map()
+
     @app.post("/api/outbox/{draft_id}/send")
-    def send_draft_via_smtp(draft_id: str) -> dict[str, Any]:
+    def send_draft_via_smtp(
+        draft_id: str,
+        force: bool = Query(False),
+    ) -> dict[str, Any]:
         """HUMAN-IN-THE-LOOP ACTION: Dispatch an email draft via SMTP."""
         draft = db.get_draft(draft_id)
         if not draft:
@@ -364,6 +558,20 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Recipient email address is required. Please edit the draft before sending.",
+            )
+
+        # Recipient repetition protection: check if recipient was already emailed
+        prior_sent = db.get_prior_sent_draft_for_recipient(
+            draft.recipient_email, exclude_draft_id=draft.id
+        )
+        if prior_sent and not force:
+            sent_date = prior_sent.sent_at[:10] if prior_sent.sent_at else "previously"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Recipient '{draft.recipient_email}' was already emailed on {sent_date} "
+                    f"for '{prior_sent.company}'. Confirm resending to proceed."
+                ),
             )
 
         try:

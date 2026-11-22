@@ -110,6 +110,48 @@ FILTER_TEST_CASES = [
         False,
         "Tech consumer news, no funding",
     ),
+    (
+        "Boba Bhai raises $18M from Left Lane to expand tea store network",
+        "Fast food and bubble tea chain expands offline presence",
+        False,
+        "Non-tech: boba tea chain",
+    ),
+    (
+        "Style Union raises $52M for fast-fashion offline apparel stores",
+        "Fast fashion clothing retailer expands physical stores",
+        False,
+        "Non-tech: fast-fashion brand",
+    ),
+    (
+        "Supply chain platform Blue Yonder raises fresh capital",
+        "Automating enterprise warehouse logistics with cloud software",
+        True,
+        "Tech: supply chain software platform",
+    ),
+    (
+        "Funding and acquisitions in Indian startups this week",
+        "Weekly digest of startup investments",
+        False,
+        "Roundup digest",
+    ),
+    (
+        "The Week’s 10 Biggest Funding Rounds: $400M For Neurotech Leads",
+        None,
+        False,
+        "False positive: weekly roundup digest",
+    ),
+    (
+        "Sarvam’s Token Factory Raises India’s AI Inference Stakes",
+        "Sarvam AI announces Token Factory inference platform",
+        False,
+        "False positive: figurative raises stakes",
+    ),
+    (
+        "Rooter’s revenue jumps over 2X to Rs 170 Cr in FY26; losses shrink 40%",
+        "Operating revenue doubled in FY26 financial statements, raised $40M in past",
+        False,
+        "False positive: earnings report (revenue jumps, losses shrink)",
+    ),
 ]
 
 

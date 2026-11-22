@@ -115,7 +115,11 @@ def run_cycle(
             stats.new += 1
             article.title_norm = normalize_title(article.title)
 
-            # Check funding keywords
+            from fundwatch.filters import classify_stage_tier
+
+            article.stage_tier = str(classify_stage_tier(article.title, article.summary or ""))
+
+            # Check funding keywords and early-stage filter
             matches_funding = is_funding_item(article, settings.filters)
 
             if bootstrap_mode:

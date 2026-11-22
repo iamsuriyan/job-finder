@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fundwatch.models import Article, DraftEmail, Extraction
+from fundwatch.models import Article, CandidateProfile, DraftEmail, Extraction
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS articles (
@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS articles (
   first_seen_at TEXT NOT NULL,
   matched       INTEGER NOT NULL DEFAULT 0,
   notified      INTEGER NOT NULL DEFAULT 0,
-  title_norm    TEXT
+  title_norm    TEXT,
+  stage_tier    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS extractions (
@@ -63,6 +64,24 @@ CREATE TABLE IF NOT EXISTS drafts (
   created_at      TEXT NOT NULL,
   sent_at         TEXT,
   error_message   TEXT
+);
+
+CREATE TABLE IF NOT EXISTS candidate_profiles (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  title           TEXT NOT NULL,
+  email           TEXT,
+  phone           TEXT,
+  location        TEXT,
+  portfolio       TEXT,
+  github          TEXT,
+  linkedin        TEXT,
+  resume_path     TEXT NOT NULL,
+  resume_filename TEXT NOT NULL,
+  bullets         TEXT,
+  skills          TEXT,
+  raw_text        TEXT,
+  updated_at      TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_articles_first_seen ON articles(first_seen_at);
@@ -110,6 +129,11 @@ class Database:
             if "emails" not in cols:
                 conn.execute("ALTER TABLE extractions ADD COLUMN emails TEXT")
 
+            cursor_articles = conn.execute("PRAGMA table_info(articles)")
+            article_cols = {row["name"] for row in cursor_articles.fetchall()}
+            if "stage_tier" not in article_cols:
+                conn.execute("ALTER TABLE articles ADD COLUMN stage_tier TEXT")
+
     def is_empty(self) -> bool:
         """Check if articles table is empty (used for first-run bootstrap detection)."""
         with self.connection() as conn:
@@ -125,14 +149,20 @@ class Database:
     def insert_article(self, article: Article) -> bool:
         """Insert a new article. Returns True if inserted, False if already exists."""
         first_seen = article.first_seen_at or utc_now_iso()
+        stage_tier = article.stage_tier
+        if not stage_tier:
+            from fundwatch.filters import classify_stage_tier
+
+            stage_tier = str(classify_stage_tier(article.title, article.summary or ""))
+
         with self.connection() as conn:
             try:
                 conn.execute(
                     """
                     INSERT INTO articles (
                         id, feed_name, title, link, summary, published_at,
-                        first_seen_at, matched, notified, title_norm
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        first_seen_at, matched, notified, title_norm, stage_tier
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         article.id,
@@ -145,6 +175,7 @@ class Database:
                         article.matched,
                         article.notified,
                         article.title_norm,
+                        stage_tier,
                     ),
                 )
                 return True
@@ -412,10 +443,26 @@ class Database:
                 """
             ).fetchall()
 
+            stage_counts = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN stage_tier = 'first_funding' THEN 1 ELSE 0 END) AS first_funding,
+                    SUM(CASE WHEN stage_tier = 'seed' THEN 1 ELSE 0 END) AS seed,
+                    SUM(CASE WHEN stage_tier = 'series_a' THEN 1 ELSE 0 END) AS series_a
+                FROM articles
+                WHERE matched = 1
+                """
+            ).fetchone()
+
             return {
                 "total": totals["total"] if totals else 0,
                 "matched": totals["matched"] if totals and totals["matched"] else 0,
                 "notified": totals["notified"] if totals and totals["notified"] else 0,
+                "first_funding_count": (
+                    int(stage_counts["first_funding"] or 0) if stage_counts else 0
+                ),
+                "seed_count": int(stage_counts["seed"] or 0) if stage_counts else 0,
+                "series_a_count": int(stage_counts["series_a"] or 0) if stage_counts else 0,
                 "by_feed": [dict(r) for r in feed_counts],
                 "by_day": [dict(r) for r in daily_counts],
             }
@@ -441,8 +488,20 @@ class Database:
             params.append(feed_name)
 
         if stage:
-            where_clauses.append("LOWER(e.stage) = LOWER(?)")
-            params.append(stage)
+            if stage == "first_funding":
+                where_clauses.append("a.stage_tier = 'first_funding'")
+            elif stage == "seed":
+                where_clauses.append("a.stage_tier = 'seed'")
+            elif stage == "series_a":
+                where_clauses.append("a.stage_tier = 'series_a'")
+            elif stage == "all_early":
+                where_clauses.append(
+                    "(a.stage_tier IN ('first_funding', 'seed', 'series_a') "
+                    "OR a.stage_tier IS NULL)"
+                )
+            else:
+                where_clauses.append("(a.stage_tier = ? OR LOWER(e.stage) = LOWER(?))")
+                params.extend([stage, stage])
 
         if search:
             pattern = f"%{search.strip()}%"
@@ -481,6 +540,7 @@ class Database:
                 a.first_seen_at,
                 a.matched,
                 a.notified,
+                a.stage_tier,
                 e.company,
                 e.domain,
                 e.founders,
@@ -620,6 +680,71 @@ class Database:
                 error_message=row["error_message"],
             )
 
+    def get_draft_by_company(self, company: str) -> DraftEmail | None:
+        """Fetch the most recent draft for a company name (case-insensitive)."""
+        if not company:
+            return None
+        norm = company.strip().lower()
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM drafts WHERE LOWER(company) = ? ORDER BY created_at DESC LIMIT 1",
+                (norm,),
+            ).fetchone()
+            if not row:
+                return None
+            return DraftEmail(
+                id=row["id"],
+                article_id=row["article_id"],
+                company=row["company"],
+                recipient_name=row["recipient_name"],
+                recipient_email=row["recipient_email"],
+                subject=row["subject"],
+                body=row["body"],
+                resume_path=row["resume_path"] or "/home/viper/Downloads/Resumes/2+/Suriyan.pdf",
+                attach_resume=bool(row["attach_resume"]),
+                status=row["status"],
+                created_at=row["created_at"],
+                sent_at=row["sent_at"],
+                error_message=row["error_message"],
+            )
+
+    def get_draft_by_recipient_email(self, email: str) -> DraftEmail | None:
+        """Fetch the most recent draft for a recipient email (case-insensitive)."""
+        if not email:
+            return None
+        norm = email.strip().lower()
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM drafts WHERE LOWER(recipient_email) = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (norm,),
+            ).fetchone()
+            if not row:
+                return None
+            return DraftEmail(
+                id=row["id"],
+                article_id=row["article_id"],
+                company=row["company"],
+                recipient_name=row["recipient_name"],
+                recipient_email=row["recipient_email"],
+                subject=row["subject"],
+                body=row["body"],
+                resume_path=row["resume_path"] or "/home/viper/Downloads/Resumes/2+/Suriyan.pdf",
+                attach_resume=bool(row["attach_resume"]),
+                status=row["status"],
+                created_at=row["created_at"],
+                sent_at=row["sent_at"],
+                error_message=row["error_message"],
+            )
+
+    def dismiss_article(self, article_id: str) -> None:
+        """Dismiss an article so it is no longer shown as an active funding deal."""
+        with self.connection() as conn:
+            conn.execute(
+                "UPDATE articles SET matched = 0, notified = 1 WHERE id = ?",
+                (article_id,),
+            )
+
     def list_drafts(self, status: str | None = None, limit: int = 100) -> list[DraftEmail]:
         """List email drafts ordered by creation time descending."""
         query = "SELECT * FROM drafts"
@@ -750,3 +875,142 @@ class Database:
                 "sent": int(row["sent"] or 0),
                 "failed": int(row["failed"] or 0),
             }
+
+    def get_prior_sent_draft_for_recipient(
+        self,
+        recipient_email: str | None,
+        exclude_draft_id: str | None = None,
+    ) -> DraftEmail | None:
+        """Find if this recipient email was already sent an outreach email."""
+        if not recipient_email or not recipient_email.strip():
+            return None
+
+        cleaned_email = recipient_email.strip().lower()
+        query = (
+            "SELECT * FROM drafts WHERE LOWER(TRIM(recipient_email)) = ? "
+            "AND status = 'sent' "
+        )
+        params: list[Any] = [cleaned_email]
+        if exclude_draft_id:
+            query += "AND id != ? "
+            params.append(exclude_draft_id)
+        query += "ORDER BY sent_at DESC LIMIT 1"
+
+        with self.connection() as conn:
+            row = conn.execute(query, tuple(params)).fetchone()
+            if not row:
+                return None
+            return DraftEmail(
+                id=row["id"],
+                article_id=row["article_id"],
+                company=row["company"],
+                recipient_name=row["recipient_name"],
+                recipient_email=row["recipient_email"],
+                subject=row["subject"],
+                body=row["body"],
+                resume_path=row["resume_path"] or "/home/viper/Downloads/Resumes/2+/Suriyan.pdf",
+                attach_resume=bool(row["attach_resume"]),
+                status=row["status"],
+                created_at=row["created_at"],
+                sent_at=row["sent_at"],
+                error_message=row["error_message"],
+            )
+
+    def get_contacted_recipients_map(self) -> dict[str, dict[str, Any]]:
+        """Return a mapping of all lowercased recipient emails that were sent emails.
+
+        Maps: lower_email -> dict of sent_at, company, recipient_name, draft_id.
+        """
+        with self.connection() as conn:
+            rows = conn.execute(
+                "SELECT id, company, recipient_name, recipient_email, sent_at "
+                "FROM drafts WHERE status = 'sent' AND recipient_email IS NOT NULL "
+                "ORDER BY sent_at DESC"
+            ).fetchall()
+            contacted: dict[str, dict[str, Any]] = {}
+            for r in rows:
+                em = (r["recipient_email"] or "").strip().lower()
+                if em and em not in contacted:
+                    contacted[em] = {
+                        "draft_id": r["id"],
+                        "company": r["company"] or "",
+                        "recipient_name": r["recipient_name"] or "",
+                        "sent_at": r["sent_at"] or "",
+                    }
+            return contacted
+
+    def save_candidate_profile(self, profile: CandidateProfile) -> None:
+        """Save or update candidate profile in DB."""
+        with self.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO candidate_profiles (
+                    id, name, title, email, phone, location,
+                    portfolio, github, linkedin, resume_path,
+                    resume_filename, bullets, skills, raw_text, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    title = excluded.title,
+                    email = excluded.email,
+                    phone = excluded.phone,
+                    location = excluded.location,
+                    portfolio = excluded.portfolio,
+                    github = excluded.github,
+                    linkedin = excluded.linkedin,
+                    resume_path = excluded.resume_path,
+                    resume_filename = excluded.resume_filename,
+                    bullets = excluded.bullets,
+                    skills = excluded.skills,
+                    raw_text = excluded.raw_text,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    profile.id,
+                    profile.name,
+                    profile.title,
+                    profile.email,
+                    profile.phone,
+                    profile.location,
+                    profile.portfolio,
+                    profile.github,
+                    profile.linkedin,
+                    profile.resume_path,
+                    profile.resume_filename,
+                    json.dumps(profile.bullets),
+                    json.dumps(profile.skills),
+                    profile.raw_text,
+                    profile.updated_at or utc_now_iso(),
+                ),
+            )
+
+    def get_candidate_profile(self, profile_id: str = "active") -> CandidateProfile | None:
+        """Fetch candidate profile by ID (defaults to 'active')."""
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM candidate_profiles WHERE id = ?",
+                (profile_id,),
+            ).fetchone()
+            if not row:
+                return None
+
+            bullets = json.loads(row["bullets"]) if row["bullets"] else []
+            skills = json.loads(row["skills"]) if row["skills"] else []
+
+            return CandidateProfile(
+                id=row["id"],
+                name=row["name"],
+                title=row["title"],
+                email=row["email"] or "",
+                phone=row["phone"] or "",
+                location=row["location"] or "",
+                portfolio=row["portfolio"] or "",
+                github=row["github"] or "",
+                linkedin=row["linkedin"] or "",
+                resume_path=row["resume_path"],
+                resume_filename=row["resume_filename"] or "Resume.pdf",
+                bullets=bullets,
+                skills=skills,
+                raw_text=row["raw_text"],
+                updated_at=row["updated_at"],
+            )

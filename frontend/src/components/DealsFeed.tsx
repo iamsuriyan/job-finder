@@ -9,8 +9,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  X,
+  Eye,
+  CheckCircle2,
 } from 'lucide-react'
-import { Article } from '../types'
+import { Article, ContactedRecipient, DraftEmail } from '../types'
 
 interface DealsFeedProps {
   articles: Article[]
@@ -20,6 +23,8 @@ interface DealsFeedProps {
   setPage: (page: number) => void
   onRefresh: () => void
   onDraftJobEnquiry: (article: Article) => void
+  onOpenDraft?: (draft: DraftEmail) => void
+  onDismissArticle?: (articleId: string) => void
   generatingArticleId: string | null
   showToast: (msg: string) => void
   feedFilter: string
@@ -27,6 +32,10 @@ interface DealsFeedProps {
   searchQuery: string
   setSearchQuery: (query: string) => void
   feeds: { name: string }[]
+  contactedRecipients?: Record<string, ContactedRecipient>
+  stageFilter: string
+  setStageFilter: (stage: string) => void
+  draftsByCompany?: Record<string, DraftEmail>
 }
 
 const STAGE_STYLES: Record<string, string> = {
@@ -93,6 +102,8 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
   setPage,
   onRefresh,
   onDraftJobEnquiry,
+  onOpenDraft,
+  onDismissArticle,
   generatingArticleId,
   showToast,
   feedFilter,
@@ -100,6 +111,10 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
   searchQuery,
   setSearchQuery,
   feeds,
+  contactedRecipients,
+  stageFilter,
+  setStageFilter,
+  draftsByCompany,
 }) => {
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null)
   const totalPages = Math.ceil(total / 24)
@@ -112,6 +127,14 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
     setTimeout(() => setCopiedEmail(null), 2000)
   }
 
+  const STAGE_TABS = [
+    { key: 'all_early', label: '⚡ All Early Stage', desc: 'Pre-Seed, Seed, Series A' },
+    { key: 'first_funding', label: '🌱 First Funding', desc: 'Angel, Pre-Seed, Stealth' },
+    { key: 'seed', label: '⚡ Seed Stage', desc: 'Seed & Seed Extension' },
+    { key: 'series_a', label: '🚀 Series A', desc: 'Series A Scaling' },
+    { key: '', label: 'All Deals', desc: 'All stages' },
+  ]
+
   return (
     <div className="space-y-5 w-full animate-fade-in">
       {/* Header */}
@@ -123,7 +146,7 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
               {total}
             </span>
           </h1>
-          <p className="text-sm text-zinc-400 mt-0.5">Real-time verified startup funding rounds</p>
+          <p className="text-sm text-zinc-400 mt-0.5">Real-time verified early-stage startup funding rounds</p>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -163,6 +186,30 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
         </div>
       </div>
 
+      {/* Early-Stage Stage Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        {STAGE_TABS.map((tab) => {
+          const isActive = (stageFilter || 'all_early') === (tab.key || 'all_deals') || (tab.key === '' && stageFilter === 'all')
+          return (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setStageFilter(tab.key || 'all')
+                setPage(1)
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 whitespace-nowrap flex items-center gap-1.5 ${
+                isActive
+                  ? 'bg-zinc-900 text-white shadow-xs'
+                  : 'bg-white border border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+              }`}
+              title={tab.desc}
+            >
+              <span>{tab.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Grid */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -194,24 +241,63 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
             const isGenerating = generatingArticleId === article.id
             const emails = article.emails || []
             const amount = formatAmount(article.amount, article.currency)
+            const isContacted = Boolean(
+              contactedRecipients &&
+                emails.some((em) => {
+                  const k = (em.email || '').trim().toLowerCase()
+                  return k && contactedRecipients[k]
+                })
+            )
+            const companyKey = (article.company || '').trim().toLowerCase()
+            const existingDraft = draftsByCompany && companyKey ? draftsByCompany[companyKey] : null
 
             return (
               <div
                 key={article.id}
-                className="bg-white border border-zinc-100 rounded-xl shadow-sm hover:shadow-md hover:border-zinc-200 transition-all duration-200 p-5 flex flex-col justify-between h-[285px]"
+                className="bg-white border border-zinc-100 rounded-xl shadow-sm hover:shadow-md hover:border-zinc-200 transition-all duration-200 p-5 flex flex-col justify-between h-[285px] relative group"
               >
                 {/* Content top section */}
                 <div className="flex flex-col gap-2.5">
                   {/* Top: Company + Stage + Amount */}
                   <div className="min-h-[46px] flex flex-col justify-start">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-zinc-900 truncate max-w-[180px]">
-                        {article.company || 'Unknown Company'}
-                      </span>
-                      {article.stage && (
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${getStageStyle(article.stage)}`}>
-                          {article.stage}
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="text-sm font-semibold text-zinc-900 truncate max-w-[140px]" title={article.company || 'Unknown'}>
+                          {article.company || 'Unknown Company'}
                         </span>
+                        {/* Stage Tier Badges */}
+                        {article.stage_tier === 'first_funding' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 uppercase tracking-wide flex items-center gap-0.5 shadow-2xs">
+                            🌱 First Funding
+                          </span>
+                        )}
+                        {article.stage_tier === 'seed' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200 uppercase tracking-wide flex items-center gap-0.5">
+                            ⚡ Seed
+                          </span>
+                        )}
+                        {article.stage_tier === 'series_a' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200 uppercase tracking-wide flex items-center gap-0.5">
+                            🚀 Series A
+                          </span>
+                        )}
+                        {article.stage && !['first_funding', 'seed', 'series_a'].includes(article.stage_tier || '') && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border shrink-0 ${getStageStyle(article.stage)}`}>
+                            {article.stage}
+                          </span>
+                        )}
+                      </div>
+                      {onDismissArticle && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDismissArticle(article.id)
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-rose-500 hover:bg-rose-50 rounded p-1 transition-all shrink-0"
+                          title="Dismiss deal from active feed"
+                        >
+                          <X size={12} />
+                        </button>
                       )}
                     </div>
                     <div className="h-5 flex items-center mt-0.5">
@@ -286,23 +372,44 @@ export const DealsFeed: React.FC<DealsFeedProps> = ({
 
                 {/* CTA - pinned to bottom */}
                 <div className="pt-2">
-                  <button
-                    onClick={() => onDraftJobEnquiry(article)}
-                    disabled={isGenerating}
-                    className="w-full flex items-center justify-center gap-2 py-2 px-4 text-xs font-medium rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 text-zinc-700 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 size={13} className="animate-spin" />
-                        <span>Drafting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={13} className="text-violet-500" />
-                        <span>Draft Outreach</span>
-                      </>
-                    )}
-                  </button>
+                  {existingDraft ? (
+                    <button
+                      onClick={() => onOpenDraft && onOpenDraft(existingDraft)}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-4 text-xs font-medium rounded-lg border border-violet-200 bg-violet-50 hover:bg-violet-600 hover:text-white hover:border-violet-600 text-violet-700 transition-all duration-200 shadow-2xs"
+                    >
+                      <Eye size={13} />
+                      <span>View Draft ({existingDraft.status === 'sent' ? 'Sent' : 'Ready'})</span>
+                    </button>
+                  ) : isContacted ? (
+                    <div className="w-full flex items-center justify-center gap-1.5 py-2 px-4 text-xs font-medium rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700">
+                      <CheckCircle2 size={13} />
+                      <span>Already Contacted</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onDraftJobEnquiry(article)}
+                      disabled={isGenerating}
+                      className="w-full flex items-center justify-center gap-2 py-2 px-4 text-xs font-medium rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-900 hover:text-white hover:border-zinc-900 text-zinc-700 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin" />
+                          <span>Drafting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={13} className="text-violet-500" />
+                          <span>
+                            {article.stage_tier === 'first_funding'
+                              ? 'Pitch Founding Role'
+                              : article.stage_tier === 'seed'
+                              ? 'Draft Seed Pitch'
+                              : 'Draft Outreach'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             )

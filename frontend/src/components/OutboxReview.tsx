@@ -13,7 +13,7 @@ import {
   RefreshCw,
   Loader2,
 } from 'lucide-react'
-import { DraftEmail, DraftStats } from '../types'
+import { DraftEmail, DraftStats, ContactedRecipient } from '../types'
 
 interface OutboxReviewProps {
   drafts: DraftEmail[]
@@ -25,6 +25,7 @@ interface OutboxReviewProps {
   onRefresh: () => void
   statusFilter: string
   setStatusFilter: (status: string) => void
+  contactedRecipients?: Record<string, ContactedRecipient>
 }
 
 function formatDate(isoString?: string): string {
@@ -63,6 +64,7 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
   onRefresh,
   statusFilter,
   setStatusFilter,
+  contactedRecipients,
 }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -225,6 +227,18 @@ export const OutboxReview: React.FC<OutboxReviewProps> = ({
                       {draft.recipient_email && (
                         <span className="text-xs text-zinc-400 font-mono">{draft.recipient_email}</span>
                       )}
+                      {(() => {
+                        const emailKey = (draft.recipient_email || '').trim().toLowerCase()
+                        const prior = emailKey && contactedRecipients ? contactedRecipients[emailKey] : null
+                        if (prior && prior.draft_id !== draft.id && draft.status === 'draft') {
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-semibold">
+                              Already Contacted
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                     <p className="text-sm text-zinc-500 truncate mt-0.5">{draft.subject}</p>
                   </div>

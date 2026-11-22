@@ -1,25 +1,46 @@
 poll_interval_minutes: 20
 jitter_seconds: 60
 request_timeout_seconds: 15
-max_items_per_feed: 50
-max_article_age_days: 3
+max_items_per_feed: 100
+max_article_age_days: 7
 user_agent: "fundwatch/0.1 (personal funding alert bot)"
 
 feeds:
+  - name: TechCrunch Startups
+    url: https://techcrunch.com/category/startups/feed/
+  - name: TechCrunch Enterprise
+    url: https://techcrunch.com/category/enterprise/feed/
+  - name: TechCrunch AI
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+  - name: Crunchbase News
+    url: https://news.crunchbase.com/feed/
+  - name: SiliconANGLE Enterprise
+    url: https://siliconangle.com/feed/
+  - name: Sifted Tech
+    url: https://sifted.eu/feed
+  - name: EU-Startups
+    url: https://www.eu-startups.com/feed/
+  - name: GeekWire Tech
+    url: https://www.geekwire.com/feed/
+  - name: TechCrunch Venture
+    url: https://techcrunch.com/category/venture/feed/
+  - name: Tech.eu
+    url: https://tech.eu/feed
+  - name: Pulse 2.0 Venture
+    url: https://pulse2.com/category/venture-capital/feed/
+  - name: BetaKit
+    url: https://betakit.com/feed/
   - name: Entrackr
     url: https://entrackr.com/rss
   - name: Inc42
     url: https://inc42.com/feed/
   - name: YourStory
     url: https://yourstory.com/feed
-  - name: Crunchbase News
-    url: https://news.crunchbase.com/feed/
-  - name: TechCrunch Startups
-    url: https://techcrunch.com/category/startups/feed/
 
 find_founder_emails: true
 
 filters:
+  early_stage_only: true
   funding_keywords:
     - raises
     - raised
@@ -43,7 +64,7 @@ filters:
 
 notifiers:
   - type: telegram
-    enabled: true
+    enabled: false
   - type: slack
     enabled: false
   - type: ntfy

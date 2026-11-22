@@ -530,3 +530,113 @@ def test_generate_job_enquiry_human_salutation_and_fallback(
     assert draft_generic.recipient_email == "founders@vituscare.com"
     assert "Hi VitusCare Team," in draft_generic.body
 
+
+def test_recipient_deduplication_database(database: Database, tmp_path: Path) -> None:
+    resume_file = tmp_path / "resume.pdf"
+    resume_file.write_bytes(b"%PDF-1.4 dummy")
+
+    d1 = DraftEmail(
+        id="d-rep-1",
+        article_id="art-1",
+        company="Acme Corp",
+        recipient_name="John Founder",
+        recipient_email="john@acme.com",
+        subject="Intro",
+        body="Pitch",
+        resume_path=str(resume_file),
+        attach_resume=True,
+        status="draft",
+        created_at="2026-11-20T10:00:00Z",
+    )
+    database.create_draft(d1)
+
+    # 1. While status is 'draft', get_prior_sent_draft_for_recipient should be None
+    assert database.get_prior_sent_draft_for_recipient("john@acme.com") is None
+
+    # 2. Mark draft 1 as sent
+    database.mark_draft_sent(d1.id, sent_at="2026-11-20T12:00:00Z")
+
+    # 3. Now it should find the prior sent draft
+    prior = database.get_prior_sent_draft_for_recipient("john@acme.com")
+    assert prior is not None
+    assert prior.id == d1.id
+    assert prior.company == "Acme Corp"
+
+    # Case insensitive and trimmed
+    assert database.get_prior_sent_draft_for_recipient("  JOHN@ACME.COM ") is not None
+
+    # Exclude own draft ID
+    assert (
+        database.get_prior_sent_draft_for_recipient("john@acme.com", exclude_draft_id=d1.id)
+        is None
+    )
+
+    # Check contacted map
+    contacted = database.get_contacted_recipients_map()
+    assert "john@acme.com" in contacted
+    assert contacted["john@acme.com"]["company"] == "Acme Corp"
+
+
+def test_send_draft_duplicate_prevention_web_api(
+    database: Database,
+    sample_settings: Settings,
+    tmp_path: Path,
+) -> None:
+    from starlette.testclient import TestClient
+
+    from fundwatch.web.app import create_app
+
+    resume_file = tmp_path / "resume.pdf"
+    resume_file.write_bytes(b"%PDF-1.4 dummy")
+    sample_settings.resume_path = str(resume_file)
+
+    # Prior draft already sent to alex@acme.com
+    d_prior = DraftEmail(
+        id="d-prior",
+        company="Acme Corp",
+        recipient_name="Alex Founder",
+        recipient_email="alex@acme.com",
+        subject="Previous Round",
+        body="Pitch",
+        resume_path=str(resume_file),
+        attach_resume=True,
+        status="sent",
+        sent_at="2026-11-15T10:00:00Z",
+        created_at="2026-11-15T09:00:00Z",
+    )
+    database.create_draft(d_prior)
+
+    # New draft created for the same recipient
+    d_new = DraftEmail(
+        id="d-new",
+        company="Acme Corp New Round",
+        recipient_name="Alex Founder",
+        recipient_email="alex@acme.com",
+        subject="New Round",
+        body="Pitch",
+        resume_path=str(resume_file),
+        attach_resume=True,
+        status="draft",
+        created_at="2026-11-22T08:00:00Z",
+    )
+    database.create_draft(d_new)
+
+    app = create_app(settings=sample_settings, db=database)
+    client = TestClient(app)
+
+    # 1. Sending without force should return 409 Conflict
+    resp_block = client.post(f"/api/outbox/{d_new.id}/send")
+    assert resp_block.status_code == 409
+    assert "already emailed" in resp_block.json()["detail"]
+
+    # 2. Sending with force=true should succeed when SMTP is mocked
+    with patch("smtplib.SMTP") as mock_smtp_cls:
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value.__enter__.return_value = mock_server
+
+        resp_force = client.post(f"/api/outbox/{d_new.id}/send?force=true")
+        assert resp_force.status_code == 200
+        assert resp_force.json()["ok"] is True
+        assert resp_force.json()["status"] == "sent"
+
+

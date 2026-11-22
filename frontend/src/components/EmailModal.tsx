@@ -10,17 +10,19 @@ import {
   Copy,
   ShieldCheck,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react'
-import { DraftEmail } from '../types'
+import { DraftEmail, ContactedRecipient } from '../types'
 
 interface EmailModalProps {
   draft: DraftEmail | null
   isOpen: boolean
   onClose: () => void
   onSaveDraft: (draftId: string, payload: Partial<DraftEmail>) => Promise<void>
-  onSendDraft: (draft: DraftEmail) => Promise<void>
+  onSendDraft: (draft: DraftEmail, force?: boolean) => Promise<void>
   initialTab?: 'read' | 'edit'
   showToast: (msg: string) => void
+  contactedRecipients?: Record<string, ContactedRecipient>
 }
 
 export const EmailModal: React.FC<EmailModalProps> = ({
@@ -31,6 +33,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({
   onSendDraft,
   initialTab = 'read',
   showToast,
+  contactedRecipients,
 }) => {
   const [activeTab, setActiveTab] = useState<'read' | 'edit'>('read')
   const [formData, setFormData] = useState<Partial<DraftEmail>>({})
@@ -39,6 +42,12 @@ export const EmailModal: React.FC<EmailModalProps> = ({
   const [showConfirmSend, setShowConfirmSend] = useState(false)
   const [copied, setCopied] = useState(false)
   const [isClosing, setIsClosing] = useState(false)
+
+  const currentEmailKey = (formData.recipient_email || draft?.recipient_email || '')
+    .trim()
+    .toLowerCase()
+  const priorContact = currentEmailKey && contactedRecipients ? contactedRecipients[currentEmailKey] : null
+  const isAlreadyContacted = Boolean(priorContact && priorContact.draft_id !== draft?.id)
 
   const handleClose = useCallback(() => {
     setIsClosing(true)
@@ -106,7 +115,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({
     setIsSending(true)
     try {
       await onSaveDraft(draft.id, formData)
-      await onSendDraft({ ...draft, ...formData } as DraftEmail)
+      await onSendDraft({ ...draft, ...formData } as DraftEmail, isAlreadyContacted)
       setShowConfirmSend(false)
       handleClose()
     } catch (err: unknown) {
@@ -187,6 +196,26 @@ export const EmailModal: React.FC<EmailModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Repeat Outreach Warning Banner */}
+        {isAlreadyContacted && priorContact && (
+          <div className="mx-6 mt-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center gap-2.5 text-xs text-amber-900 flex-shrink-0 animate-fade-in">
+            <AlertTriangle size={15} className="text-amber-600 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold">Repeat Outreach Safeguard:</span> This recipient (
+              <span className="font-mono font-medium">{formData.recipient_email || draft.recipient_email}</span>
+              ) was already emailed on{' '}
+              <span className="font-medium">
+                {new Date(priorContact.sent_at).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </span>{' '}
+              for <span className="font-semibold">{priorContact.company}</span>.
+            </div>
+          </div>
+        )}
 
         {/* Modal Body - Fixed scrollable container with smooth tab transition */}
         <div className="p-6 overflow-hidden flex-1 min-h-0 flex flex-col">
@@ -374,9 +403,26 @@ export const EmailModal: React.FC<EmailModalProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Resume:</span>
-                  <span className="font-semibold text-emerald-700">Suriyan.pdf Attached</span>
+                  <span className="font-semibold text-emerald-700">Resume Attached</span>
                 </div>
               </div>
+
+              {isAlreadyContacted && priorContact && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 text-left space-y-1">
+                  <p className="font-semibold flex items-center gap-1.5 text-amber-950">
+                    <AlertTriangle size={13} className="text-amber-600" />
+                    Recipient Already Contacted
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-amber-800">
+                    You already sent an outreach email to this address for <strong>{priorContact.company}</strong> on{' '}
+                    {new Date(priorContact.sent_at).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                    . Confirming will resend another email.
+                  </p>
+                </div>
+              )}
 
               <p className="text-xs text-zinc-600 leading-relaxed">
                 This action will authenticate with your configured SMTP server and dispatch your personalized enquiry directly to <strong>{formData.recipient_email}</strong>.
@@ -393,10 +439,20 @@ export const EmailModal: React.FC<EmailModalProps> = ({
                 <button
                   onClick={handleConfirmSend}
                   disabled={isSending}
-                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition shadow-xs disabled:opacity-50"
+                  className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-lg text-white font-medium transition shadow-xs disabled:opacity-50 ${
+                    isAlreadyContacted
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-zinc-900 hover:bg-zinc-800'
+                  }`}
                 >
                   {isSending && <Loader2 size={13} className="animate-spin" />}
-                  <span>{isSending ? 'Dispatching...' : 'Yes, Dispatch Email'}</span>
+                  <span>
+                    {isSending
+                      ? 'Dispatching...'
+                      : isAlreadyContacted
+                      ? 'Confirm & Resend Anyway'
+                      : 'Yes, Dispatch Email'}
+                  </span>
                 </button>
               </div>
             </div>

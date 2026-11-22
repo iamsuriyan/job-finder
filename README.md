@@ -1,37 +1,46 @@
-# 💼 FundWatch — AI-Powered Startup Funding Tracker & Founder Job Outreach Engine
+# 💼 FundWatch — Startup Funding Tracker & Founder Job Outreach Engine
 
 A self-hosted, lightweight platform that monitors RSS/Atom feeds for startup funding announcements, filters noise with intelligent keyword and geographic filtering, automatically discovers founding team email addresses, and generates personalized, high-converting cold job enquiry email drafts for human-in-the-loop review and SMTP dispatch.
+
+Now featuring **Universal Resume Upload & Deterministic Parsing**: anyone can drop in their PDF resume without needing an LLM API key. FundWatch deterministically extracts contact info, portfolio/social links, technical skills, and scores the top 3 cold outreach pitch accomplishments to dynamically populate all outreach emails.
 
 ---
 
 ## ✨ Core Highlights & Features
 
-### 1. 🔍 Automated Startup & Founding Team Email Discovery
-- **Domain Resolution Engine**: Resolves company domains via article link scraping, smart slug & root permutation against live DNS MX checks, and Clearbit Autocomplete.
+### 1. 📄 Universal Resume Upload & Deterministic Pitch Engine
+- **Zero-LLM Deterministic Parser**: Powered by `pypdf` and heuristic scoring algorithms. Extracts candidate profile, contact details, links, and technical competencies with 100% deterministic accuracy and zero external API dependencies or costs.
+- **Automated Cold Pitch Extraction**: Analyzes resume accomplishment bullets and scores them based on action verbs, scale metrics (`%`, `k`, `$`, latency, volume, user scale), and architecture keywords to select the top 3 high-impact pitch points.
+- **Customizable Candidate Profile**: Edit candidate name, title (e.g., *Product Engineer*), email, phone, location, portfolio website, GitHub, and LinkedIn profiles directly in the dashboard.
+- **Instant Draft Batch Regeneration**: 1-click regeneration button updates all pending outbox drafts with the active candidate's profile, pitch bullets, links, and resume attachment.
+- **Mandatory Resume Attachment Safeguard**: Enforces that a valid resume PDF file exists on disk and is attached before any cold outreach email can be dispatched via SMTP.
+
+### 2. 🔍 Automated Startup & Founding Team Email Discovery
+- **Domain Resolution Engine**: Resolves company domains via article link scraping, smart slug & root permutations against live DNS MX checks, and Clearbit Autocomplete.
 - **Mail Provider Identification**: Detects Google Workspace, Microsoft 365, Zoho Mail, Proton, and GoDaddy via DNS MX lookups.
-- **Multi-Founder Extraction**: Regex heuristics extract human founder names from complex press releases (*"Founded in 2017 by Prabhat Shrivastava"*, *"Founded in late 2025 by Apoorva Kumar, Manish Atri and Cyril Treacy"*).
+- **Multi-Founder Extraction**: Regex heuristics extract human founder names from press releases (*"Founded in 2017 by Prabhat Shrivastava"*, *"Founded in late 2025 by Apoorva Kumar, Manish Atri and Cyril Treacy"*).
 - **Pattern Permutations & Role Inboxes**: Generates high-probability founder email patterns (`first@domain`, `first.last@domain`, `firstlast@domain`) alongside executive inboxes (`founders@domain`, `ceo@domain`, `contact@domain`).
 - **Instant Port 25 Pre-check**: Caches network port 25 availability to eliminate 30–60s socket timeout delays on cloud or residential networks.
 - **Website Scraping & Hunter.io**: Scrapes public contact emails directly from company landing pages and enriches via Hunter.io API if configured.
 
-### 2. ✉️ Human-in-the-Loop Job Enquiry Outreach
+### 3. ✉️ Human-in-the-Loop Job Enquiry Outreach
 > [!IMPORTANT]
-> **Strict Human-in-the-Loop Review**: Emails are **never** dispatched automatically upon discovery. They are saved in `status = 'draft'` for human inspection, personalization, and explicit approval before sending.
+> **Strict Human-in-the-Loop Review**: Emails are **never** dispatched automatically upon discovery. They are saved in `status = 'draft'` for human inspection, personalization, and explicit approval before sending. Both a valid resume PDF attachment and proper SMTP credentials are strictly mandatory.
 
-- **Candidate-Aligned Email Drafts**: Tailored cold email templates presenting actual engineering experience (2+ years Generative AI & Product Engineering at IIT Bombay-incubated Cooper Compass and Mindgryd).
+- **Candidate-Aligned Email Drafts**: Tailored cold email templates presenting proven engineering accomplishments taking products from 0 to 1 and scaling backend and infrastructure systems.
 - **Context-Aware Salutations**: Personalized greeting using the founder's first name (`Hi Prabhat,`, `Hi Dhruv,`) or company team (`Hi VitusCare Team,`).
-- **Resume Attachment**: Automatically attaches candidate resume PDF (`Suriyan.pdf`) with live file verification, metadata inspection, and preview downloads.
+- **Inline Resume PDF Preview**: View active resume directly in a browser new tab via native PDF viewer (`Content-Disposition: inline`) without forced download prompts.
 - **Configurable SMTP Dispatcher**: Supports custom SMTP hosts, TLS/STARTTLS authentication, custom from-addresses, and live connection test utilities.
 
-### 3. ⚛️ Modern React + Vite Animated SaaS Dashboard
+### 4. ⚛️ Modern React + Vite Animated SaaS Dashboard
 - **Component Architecture**: Built with **React 18 + Vite + TypeScript + Tailwind CSS** with Lucide icons.
-- **Animated Collapsible Sidebar**: Left-docked animated navigation with sliding active pills, collapse/expand toggles (288px wide <-> 80px compact), live pulse indicator, and attached resume badge.
-- **Pure Light-Theme SaaS Aesthetic**: Designed with crisp white, slate/zinc surfaces, subtle shadows, and zero eye-strain.
-- **Interactive Email Reader & Modal Editor**: Full modal with dual **Reader Mode** (pixel-perfect email preview as sent) and **Editor Mode** (live editing of recipient, subject, body, attachment toggle) with human confirmation safeguard before dispatch.
-- **Live Deal Cards**: Deal stream with domain pills, extracted deal terms, and 1-click clipboard copy for founder emails.
+- **Linear/Vercel Light-Theme Aesthetic**: Crisp white and zinc surfaces, subtle borders, responsive typography, and consistent card dimensions.
+- **Resume Upload Dropzone**: Drag-and-drop PDF upload with instant parsing feedback and live status indicator.
+- **Interactive Email Reader & Modal Editor**: Smooth-transitioning modal with **Reader Mode** (pixel-perfect email preview as sent) and **Editor Mode** (live editing of recipient, subject, body, attachment toggle) with human confirmation safeguard before dispatch.
+- **Full Card Interaction**: Outbox cards and deals feature clickable surfaces, clean hover states, and smooth modal entry/exit transitions.
 - **Live Feed & SMTP Health Monitors**: Real-time RSS inspector with latency measurements and live SMTP handshake tester.
 
-### 4. 🚀 Complete CLI & One-Click Runner Script (`./run.sh`)
+### 5. 🚀 Complete CLI & One-Click Runner Script (`./run.sh`)
 - Executable bash launcher (`./run.sh`) for starting the UI, running poll cycles, continuous monitoring, outbox inspection, and test execution.
 - Dedicated `fundwatch outbox` CLI commands to manage and review drafts straight from the terminal.
 
@@ -62,18 +71,18 @@ Edit `.env` with your settings:
 DB_PATH=./data/fundwatch.db
 LOG_LEVEL=INFO
 
-# Candidate Profile
+# Candidate Profile (or upload your resume via the Web UI)
 CANDIDATE_NAME="Suriyan Dhanapal"
-CANDIDATE_TITLE="Generative AI & Product Engineer"
+CANDIDATE_TITLE="Product Engineer"
 CANDIDATE_EMAIL="suriyandhanapal@gmail.com"
 RESUME_PATH="/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
 
-# SMTP Settings for Outbox Dispatch (Optional)
+# SMTP Settings for Outbox Dispatch (Mandatory to send emails)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=suriyandhanapal@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM=suriyandhanapal@gmail.com
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+SMTP_FROM=your_email@gmail.com
 
 # Optional Alerts & Enrichment
 FIND_FOUNDER_EMAILS=true
@@ -94,6 +103,8 @@ fundwatch ui --port 8000
 ```
 Open **`http://localhost:8000`** in your browser.
 
+Upload your resume under **My Profile** to automatically parse your accomplishments and synchronize your outreach email templates.
+
 ---
 
 ## 💻 Running with `./run.sh`
@@ -108,6 +119,25 @@ The `./run.sh` script automates common workflows:
 ./run.sh test      # Run full unit and integration test suite (pytest)
 ./run.sh help      # Display command help
 ```
+
+---
+
+## 🌐 REST API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/candidate/profile` | `GET` | Retrieve the active candidate profile details, bullets, and skills. |
+| `/api/candidate/profile` | `PUT` | Update candidate fields, contact information, and pitch bullets. |
+| `/api/candidate/resume/upload` | `POST` | Upload and deterministically parse a resume PDF file (`multipart/form-data`). |
+| `/api/candidate/regenerate-drafts` | `POST` | Batch regenerate pending outbox drafts with the active profile. |
+| `/api/outbox/resume/status` | `GET` | Check resume attachment existence, file size, and path metadata. |
+| `/api/outbox/resume/download` | `GET` | Preview or download active resume PDF with inline browser support. |
+| `/api/articles` | `GET` | List funding deals with search, pagination, and feed filters. |
+| `/api/outbox` | `GET` | List email outreach drafts and stats (draft, sent, failed). |
+| `/api/outbox/{id}` | `GET` / `PUT` / `DELETE` | Retrieve, update, or remove a specific email draft. |
+| `/api/outbox/{id}/send` | `POST` | Dispatch draft via SMTP (requires resume attachment & SMTP configuration). |
+| `/api/outbox/smtp/test` | `POST` | Test SMTP server handshake and credentials. |
+| `/api/feeds` | `GET` | Check RSS feed sources and health status. |
 
 ---
 
@@ -178,7 +208,7 @@ filters:
     - opinion
 
 candidate_name: "Suriyan Dhanapal"
-candidate_title: "Generative AI & Product Engineer"
+candidate_title: "Product Engineer"
 candidate_email: "suriyandhanapal@gmail.com"
 resume_path: "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
 find_founder_emails: true
@@ -188,10 +218,10 @@ find_founder_emails: true
 
 ## 🧪 Testing & Quality Assurance
 
-The codebase maintains strict typing and 100% mocked external network tests:
+The codebase maintains strict typing, linting standards, and 100% mocked external network tests:
 
 ```bash
-# Run 92 unit and integration tests
+# Run all 102 unit and integration tests
 pytest tests/
 
 # Strict type checking with Mypy
@@ -200,6 +230,9 @@ mypy src tests
 # Code style and formatting checks with Ruff
 ruff check src tests
 ruff format --check src tests
+
+# Compile frontend React TypeScript assets
+npm run build --prefix frontend
 ```
 
 ---
@@ -207,5 +240,6 @@ ruff format --check src tests
 ## 🔒 Security & Privacy
 
 - **Human Review**: Cold emails are never dispatched automatically. Every draft requires human confirmation.
+- **Mandatory Safeguards**: Prevents sending emails without an attached resume PDF or unconfigured SMTP credentials.
 - **Credential Safety**: SMTP credentials, API tokens, and bot secrets are loaded strictly from `.env` and environment variables.
-- **Local SQLite Storage**: Feed states, extractions, and draft copies remain on your local machine (`./data/fundwatch.db`).
+- **Local SQLite Storage**: Feed states, extractions, uploaded resumes (`data/resumes/`), and draft copies remain on your local machine (`./data/fundwatch.db`).

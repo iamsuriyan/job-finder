@@ -1,6 +1,8 @@
 import {
   Article,
+  CandidateProfile,
   ConfigSummary,
+  ContactedRecipient,
   DraftEmail,
   DraftStats,
   FeedInfo,
@@ -59,7 +61,13 @@ export async function fetchConfig(): Promise<ConfigSummary> {
   return res.json()
 }
 
-export async function fetchOutbox(status?: string): Promise<{ items: DraftEmail[]; stats: DraftStats }> {
+export async function fetchOutbox(
+  status?: string
+): Promise<{
+  items: DraftEmail[]
+  stats: DraftStats
+  contacted_recipients?: Record<string, ContactedRecipient>
+}> {
   const query = status ? `?status=${encodeURIComponent(status)}` : ''
   const res = await fetch(`${BASE_URL}/api/outbox${query}`)
   if (!res.ok) throw new Error('Failed to fetch outbox drafts')
@@ -103,14 +111,28 @@ export async function deleteDraft(draftId: string): Promise<{ ok: boolean }> {
   return res.json()
 }
 
-export async function sendDraft(draftId: string): Promise<{ ok: boolean; message: string; recipient: string }> {
-  const res = await fetch(`${BASE_URL}/api/outbox/${encodeURIComponent(draftId)}/send`, {
+export async function sendDraft(
+  draftId: string,
+  force: boolean = false
+): Promise<{ ok: boolean; message: string; recipient: string }> {
+  const query = force ? '?force=true' : ''
+  const res = await fetch(`${BASE_URL}/api/outbox/${encodeURIComponent(draftId)}/send${query}`, {
     method: 'POST',
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Dispatch failed' }))
-    throw new Error(err.detail || 'Dispatch failed')
+    const error = new Error(err.detail || 'Dispatch failed')
+    if (res.status === 409) {
+      ;(error as any).isDuplicate = true
+    }
+    throw error
   }
+  return res.json()
+}
+
+export async function fetchContactedRecipients(): Promise<Record<string, ContactedRecipient>> {
+  const res = await fetch(`${BASE_URL}/api/outbox/recipients/contacted`)
+  if (!res.ok) throw new Error('Failed to fetch contacted recipients')
   return res.json()
 }
 
@@ -134,6 +156,63 @@ export async function testSmtpConnection(payload: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'SMTP connection failed' }))
     throw new Error(err.detail || 'SMTP test failed')
+  }
+  return res.json()
+}
+
+export async function fetchCandidateProfile(): Promise<CandidateProfile> {
+  const res = await fetch(`${BASE_URL}/api/candidate/profile`)
+  if (!res.ok) throw new Error('Failed to load candidate profile')
+  return res.json()
+}
+
+export async function uploadResumeFile(file: File): Promise<CandidateProfile> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${BASE_URL}/api/candidate/resume/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to upload resume' }))
+    throw new Error(err.detail || 'Failed to upload resume')
+  }
+  return res.json()
+}
+
+export async function updateCandidateProfile(
+  payload: Partial<CandidateProfile>
+): Promise<CandidateProfile> {
+  const res = await fetch(`${BASE_URL}/api/candidate/profile`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to update candidate profile' }))
+    throw new Error(err.detail || 'Failed to update candidate profile')
+  }
+  return res.json()
+}
+
+export async function dismissArticle(articleId: string): Promise<{ success: boolean; article_id: string }> {
+  const res = await fetch(`${BASE_URL}/api/articles/${encodeURIComponent(articleId)}/dismiss`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to dismiss article' }))
+    throw new Error(err.detail || 'Failed to dismiss article')
+  }
+  return res.json()
+}
+
+export async function regenerateDraftsWithProfile(): Promise<{ updated_count: number }> {
+  const res = await fetch(`${BASE_URL}/api/candidate/regenerate-drafts`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to regenerate drafts' }))
+    throw new Error(err.detail || 'Failed to regenerate drafts')
   }
   return res.json()
 }

@@ -29,6 +29,7 @@ export interface Article {
   amount?: number
   currency?: string
   stage?: string
+  stage_tier?: 'first_funding' | 'seed' | 'series_a' | 'late' | 'unknown'
   sector?: string
   location?: string
   investors?: string[]
@@ -87,6 +88,31 @@ export interface ResumeStatus {
   filename: string
   size_bytes: number
   size_kb: number
+}
+
+export interface ContactedRecipient {
+  draft_id: string
+  company: string
+  recipient_name: string
+  sent_at: string
+}
+
+export interface CandidateProfile {
+  id: string
+  name: string
+  title: string
+  email: string
+  phone?: string
+  location?: string
+  portfolio?: string
+  github?: string
+  linkedin?: string
+  resume_path?: string
+  resume_filename?: string
+  bullets: string[]
+  skills: string[]
+  raw_text?: string
+  updated_at?: string
 }
 
 export interface ConfigSummary {

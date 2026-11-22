@@ -69,6 +69,26 @@ FOUNDER_STOPWORDS = {
     "capital",
 }
 
+# Editorial / temporal tokens that should never be extracted as company names
+COMPANY_BLACKLIST_STOPWORDS = {
+    "the week",
+    "this week",
+    "today",
+    "yesterday",
+    "tomorrow",
+    "top 10",
+    "top 5",
+    "startup",
+    "firm",
+    "company",
+    "roundup",
+    "recap",
+    "report",
+    "breaking",
+    "exclusive",
+    "scoop",
+}
+
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
 
 # Cached status of outbound port 25 connectivity on host
@@ -173,7 +193,7 @@ def extract_company_name(title: str, summary: str = "") -> str:
     )
 
     m2 = re.search(
-        rf"^(?:{category_prefixes})?([A-Za-z0-9\s&.-]+?)\s+(?:raises|raised|bags|bagged|secures|secured|closes|closed|gets|nabs|lands|collects|eyes|to\s+raise|funding|revenue|through)",
+        rf"^(?:{category_prefixes})?([A-Za-z0-9\s&.-]+?)\s+(?:raises|raised|bags|bagged|secures|secured|closes|closed|gets|nabs|lands|collects|eyes|to\s+raise|funding|through)",
         name,
         re.IGNORECASE,
     )
@@ -182,7 +202,7 @@ def extract_company_name(title: str, summary: str = "") -> str:
     else:
         # Check for possessive beginning: e.g. "Sarvam’s Token Factory..."
         m_pos = re.search(r"^([A-Z0-9][\w\s&.-]{1,30}?)[’\x27]s\s+", name)
-        if m_pos:
+        if m_pos and m_pos.group(1).strip().lower() not in COMPANY_BLACKLIST_STOPWORDS:
             name = m_pos.group(1).strip()
         else:
             # Fallback to leading capitalized words if clean
@@ -199,6 +219,8 @@ def extract_company_name(title: str, summary: str = "") -> str:
 
     # 3. Clean up trailing possessives
     name = re.sub(r"[’\x27]s$", "", name).strip()
+    if name.lower() in COMPANY_BLACKLIST_STOPWORDS:
+        return "Startup"
     return name if name else "Startup"
 
 

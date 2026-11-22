@@ -482,6 +482,9 @@ def outbox_send(
     draft_id: str = typer.Argument(..., help="Draft ID to send"),
     config: Path = typer.Option(Path("config.yaml"), "--config", "-c", help="Path to config.yaml"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip human confirmation prompt"),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Force send even if recipient was already emailed"
+    ),
 ) -> None:
     """HUMAN REVIEW SEND: Send a reviewed draft via SMTP."""
     from fundwatch.config import load_config
@@ -498,6 +501,24 @@ def outbox_send(
     if not draft.recipient_email:
         console.print("[bold red]Cannot send: Recipient email is empty.[/bold red]")
         raise typer.Exit(code=1)
+
+    # Check recipient contact history
+    prior_sent = db.get_prior_sent_draft_for_recipient(
+        draft.recipient_email, exclude_draft_id=draft.id
+    )
+    if prior_sent:
+        sent_date = prior_sent.sent_at[:10] if prior_sent.sent_at else "previously"
+        console.print(
+            f"[bold yellow]⚠️  WARNING: Recipient '{draft.recipient_email}' "
+            f"was already emailed on {sent_date} for '{prior_sent.company}'.[/bold yellow]"
+        )
+        if not force and not yes:
+            resend_confirm = typer.confirm(
+                "Do you want to send another outreach email to this same recipient?"
+            )
+            if not resend_confirm:
+                console.print("[yellow]Send cancelled to avoid repeated outreach.[/yellow]")
+                return
 
     # Human Review Confirmation Gate
     if not yes:

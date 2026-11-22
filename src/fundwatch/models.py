@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class StageTier(StrEnum):
+    """Funding stage classification tiers for early-stage startup targeting."""
+
+    FIRST_FUNDING = "first_funding"  # Pre-seed, Angel, Stealth exits, Accelerator
+    SEED = "seed"                    # Seed round, Seed extension, Seed capital
+    SERIES_A = "series_a"            # Series A, Pre-Series A
+    LATE = "late"                    # Series B, C, D+, Growth, Debt, PE, Buyouts, IPO
+    UNKNOWN = "unknown"              # Unstated stage
 
 
 class Feed(BaseModel):
@@ -29,6 +40,7 @@ class Article(BaseModel):
     matched: int = 0
     notified: int = 0
     title_norm: str | None = None
+    stage_tier: str | None = None
 
 
 class Extraction(BaseModel):
@@ -46,11 +58,13 @@ class Extraction(BaseModel):
     domain: str | None = None
     founders: list[dict[str, str]] | None = None
     emails: list[dict[str, Any]] | None = None
+    stage_tier: str | None = None
 
 
 class CandidateProfile(BaseModel):
     """Candidate profile information parsed from resume for job enquiry generation."""
 
+    id: str = "active"
     name: str = "Suriyan Dhanapal"
     title: str = "Product Engineer | Backend, Systems & Infrastructure"
     email: str = "suriyandhanapal@gmail.com"
@@ -60,6 +74,29 @@ class CandidateProfile(BaseModel):
     github: str = "https://github.com/iamsuriyan"
     linkedin: str = "https://linkedin.com/in/suriyan-d-74514223a"
     resume_path: str = "/home/viper/Downloads/Resumes/2+/Suriyan.pdf"
+    resume_filename: str = "Suriyan.pdf"
+    bullets: list[str] = Field(default_factory=lambda: [
+        (
+            "Built the platform end to end as the product engineer: architecture, knowledge "
+            "ingestion, extraction, database models, background queues, and review interface."
+        ),
+        (
+            "Developed a compliance agent that answers trade and tax compliance questions "
+            "directly from official sources (DGFT, GST, CBIC) with hybrid retrieval and "
+            "human-in-the-loop review."
+        ),
+        (
+            "Scaled multi-tenant AI systems: chunked and embedded documents into pgvector "
+            "with tenant-isolated retrieval, integrated 25+ LLM and voice providers, and "
+            "deployed full-stack web applications."
+        ),
+    ])
+    skills: list[str] = Field(default_factory=lambda: [
+        "Python", "FastAPI", "React", "TypeScript", "Docker",
+        "PostgreSQL", "pgvector", "Redis", "RAG",
+    ])
+    raw_text: str | None = None
+    updated_at: str | None = None
 
 
 class DraftEmail(BaseModel):
@@ -88,6 +125,10 @@ class FilterConfig(BaseModel):
     sector_keywords: list[str] = Field(default_factory=list)
     geo_keywords: list[str] = Field(default_factory=list)
     exclude_keywords: list[str] = Field(default_factory=list)
+    early_stage_only: bool = False
+    allowed_stages: list[str] = Field(
+        default_factory=lambda: ["first_funding", "seed", "series_a", "unknown"]
+    )
 
 
 class NotifierConfig(BaseModel):

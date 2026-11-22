@@ -11,7 +11,7 @@ import {
   FileText,
   ExternalLink,
 } from 'lucide-react'
-import { ResumeStatus, DraftStats } from '../types'
+import { ResumeStatus, DraftStats, CandidateProfile } from '../types'
 
 interface SidebarProps {
   activeTab: string
@@ -20,6 +20,7 @@ interface SidebarProps {
   setIsCollapsed: (collapsed: boolean) => void
   outboxStats?: DraftStats
   resumeStatus?: ResumeStatus | null
+  candidateProfile?: CandidateProfile | null
 }
 
 const navItems = [
@@ -62,7 +63,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setIsCollapsed,
   outboxStats,
   resumeStatus,
+  candidateProfile,
 }) => {
+  const dynamicNavItems = [
+    {
+      id: 'deals',
+      label: 'Funding Deals',
+      sublabel: 'Live rounds',
+      icon: Flame,
+    },
+    {
+      id: 'outbox',
+      label: 'Outbox',
+      sublabel: 'Review queue',
+      icon: Inbox,
+    },
+    {
+      id: 'feeds',
+      label: 'Feed Sources',
+      sublabel: 'RSS health',
+      icon: Rss,
+    },
+    {
+      id: 'profile',
+      label: 'My Profile',
+      sublabel: candidateProfile?.name || 'Candidate Profile',
+      icon: User,
+    },
+    {
+      id: 'settings',
+      label: 'SMTP Settings',
+      sublabel: 'Email config',
+      icon: Settings,
+    },
+  ]
   return (
     <aside
       className={`fixed top-0 left-0 h-screen z-30 bg-white border-r border-zinc-100 flex flex-col transition-all duration-300 ease-spring select-none ${
@@ -92,7 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Nav */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
+        {dynamicNavItems.map((item) => {
           const Icon = item.icon
           const isActive = activeTab === item.id
           const pendingBadge =
@@ -162,9 +196,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <FileText size={13} className="text-zinc-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-zinc-800 truncate">Suriyan.pdf</p>
-                {resumeStatus?.size_kb && (
+                <p className="text-xs font-medium text-zinc-800 truncate">
+                  {candidateProfile?.resume_filename || resumeStatus?.filename || 'Resume.pdf'}
+                </p>
+                {resumeStatus?.size_kb ? (
                   <p className="text-[10px] text-zinc-400">{resumeStatus.size_kb} KB</p>
+                ) : (
+                  <p className="text-[10px] text-emerald-600 font-medium">Ready</p>
                 )}
               </div>
               <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" title="Resume attached" />
