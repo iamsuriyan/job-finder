@@ -189,17 +189,32 @@ export const App: React.FC = () => {
     if (prevScrapingRef.current && scraperStatus && !scraperStatus.is_scraping) {
       loadArticles()
       loadFeeds()
+      loadOutbox()
       const stats = scraperStatus.last_poll_stats
       if (stats && stats.new > 0) {
         showToast(`Feed scrape complete: ${stats.new} new funding rounds discovered!`)
       } else if (stats) {
-        showToast(`Feed scrape complete: all ${stats.fetched} articles up to date.`)
+        showToast(`Feed sweep complete: all ${stats.fetched} articles indexed.`)
       }
     }
     if (scraperStatus) {
       prevScrapingRef.current = scraperStatus.is_scraping
     }
   }, [scraperStatus?.is_scraping])
+
+  // Auto-refresh when new jobs are ready in the outbox
+  const prevJobTotalRef = React.useRef<number>(0)
+  useEffect(() => {
+    if (scraperStatus?.total_jobs_ready != null) {
+      if (prevJobTotalRef.current !== 0 && scraperStatus.total_jobs_ready > prevJobTotalRef.current) {
+        const added = scraperStatus.total_jobs_ready - prevJobTotalRef.current
+        showToast(`⚡ Discovered ${added} new job opportunit${added > 1 ? 'ies' : 'y'}! Outbox updated.`)
+        loadOutbox()
+        loadArticles()
+      }
+      prevJobTotalRef.current = scraperStatus.total_jobs_ready
+    }
+  }, [scraperStatus?.total_jobs_ready])
 
   // Manual trigger for scraper
   const handleTriggerScrape = async () => {
@@ -333,12 +348,15 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Live Background Scraper Status Badge / Control */}
+            {/* Live Continuous Discovery Engine Indicator */}
             {scraperStatus?.is_scraping ? (
-              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-800 text-xs shadow-xs animate-pulse">
-                <Loader2 size={12} className="animate-spin text-violet-600" />
-                <span className="font-semibold">
-                  Scraping ({scraperStatus.feed_index}/{scraperStatus.feed_total}):
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-800 text-xs shadow-xs animate-pulse">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-600"></span>
+                </span>
+                <span className="font-semibold text-violet-900">
+                  Scanning ({scraperStatus.feed_index}/{scraperStatus.feed_total}):
                 </span>
                 <span className="font-medium max-w-[140px] truncate text-violet-700">
                   {scraperStatus.current_feed || 'Feeds...'}
@@ -346,28 +364,31 @@ export const App: React.FC = () => {
                 <span className="text-[10px] font-mono font-bold bg-violet-200/80 text-violet-900 px-1.5 py-0.5 rounded">
                   {scraperStatus.progress_percent}%
                 </span>
+                {scraperStatus.total_jobs_ready != null && (
+                  <span className="hidden sm:inline-flex text-[11px] font-semibold text-violet-800 bg-white/70 px-2 py-0.5 rounded-full border border-violet-200/60">
+                    {scraperStatus.total_jobs_ready} jobs ready
+                  </span>
+                )}
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {scraperStatus?.last_polled_at && (
-                  <span className="hidden lg:inline-flex items-center gap-1 text-[11px] text-zinc-400 font-mono">
-                    <Activity size={11} className="text-emerald-500" />
-                    Last scraped:{' '}
-                    {new Date(scraperStatus.last_polled_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-semibold">Continuous Discovery Active</span>
+                  <span className="text-emerald-300">·</span>
+                  <span className="font-mono text-emerald-700 font-semibold">
+                    {scraperStatus?.total_jobs_ready ?? outboxStats.total} Jobs Ready
                   </span>
-                )}
+                </div>
                 <button
                   type="button"
                   onClick={handleTriggerScrape}
                   disabled={triggeringScrape || scraperStatus?.is_scraping}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-medium border border-zinc-200/70 transition disabled:opacity-50 cursor-pointer"
-                  title="Manually fetch and process latest startup deals across all configured RSS and news feeds"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-medium border border-zinc-200/70 transition disabled:opacity-50 cursor-pointer"
+                  title="Trigger immediate feed scan"
                 >
                   <RefreshCw size={11} className={triggeringScrape ? 'animate-spin' : ''} />
-                  <span>Scrape Feeds</span>
+                  <span>Scan Now</span>
                 </button>
               </div>
             )}

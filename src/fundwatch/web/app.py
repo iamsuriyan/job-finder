@@ -26,7 +26,7 @@ from fundwatch.fetcher import inspect_feed
 from fundwatch.models import CandidateProfile, Extraction, Settings
 from fundwatch.notifiers import build_notifiers
 from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
-from fundwatch.pipeline import CycleStats, run_cycle
+from fundwatch.pipeline import CycleStats, auto_generate_missing_drafts, run_cycle
 from fundwatch.resume_parser import parse_resume_to_profile
 from fundwatch.web.templates import get_assets_dir, get_dashboard_html
 
@@ -36,15 +36,18 @@ RESUMES_DIR = Path("data/resumes")
 
 
 class ScraperManager:
-    """Manages background scraping lifecycle, live feed progress, and periodic scheduling."""
+    """Manages continuous background job discovery, feed scraping, and automatic job enquiry drafting."""
 
     def __init__(self, settings: Settings, db: Database) -> None:
         self.settings = settings
         self.db = db
+        self.mode: str = "continuous"
         self.is_scraping: bool = False
         self.current_feed: str | None = None
         self.feed_index: int = 0
         self.feed_total: int = len(settings.feeds)
+        self.cycle_count: int = 0
+        self.cooldown_seconds: int = 15
         self.last_polled_at: str | None = None
         self.last_poll_status: str | None = None
         self.last_poll_stats: dict[str, int] | None = None
@@ -62,18 +65,25 @@ class ScraperManager:
             elif not self.is_scraping and self.last_polled_at:
                 progress = 100
 
+            draft_stats = self.db.get_draft_stats()
+            total_jobs = draft_stats.get("total", 0)
+
             return {
                 "is_scraping": self.is_scraping,
+                "mode": self.mode,
                 "current_feed": self.current_feed,
                 "feed_index": self.feed_index,
                 "feed_total": self.feed_total,
                 "progress_percent": progress,
+                "cycle_count": self.cycle_count,
+                "total_jobs_ready": total_jobs,
                 "last_polled_at": self.last_polled_at,
                 "last_poll_status": self.last_poll_status,
                 "last_poll_stats": self.last_poll_stats,
                 "last_error": self.last_error,
                 "next_poll_at": self.next_poll_at,
                 "interval_minutes": self.settings.poll_interval_minutes,
+                "cooldown_seconds": self.cooldown_seconds,
             }
 
     def _feed_progress(self, index: int, total: int, feed_name: str) -> None:
@@ -87,7 +97,7 @@ class ScraperManager:
             self.is_scraping = True
             self.feed_index = 0
             self.feed_total = len(self.settings.feeds)
-            self.current_feed = "Starting scrape cycle..."
+            self.current_feed = "Scanning startup feeds for funding rounds..."
             self.last_poll_status = "running"
             self.last_error = None
 
@@ -101,12 +111,26 @@ class ScraperManager:
                 dry_run=dry_run,
                 delay_between_feeds=0.5,
                 feed_callback=self._feed_progress,
+                auto_generate_drafts=True,
             )
+
+            # Backfill any existing matched articles that do not have outbox drafts yet
+            if not dry_run:
+                try:
+                    new_drafts = auto_generate_missing_drafts(self.settings, self.db, limit=100)
+                    if new_drafts > 0:
+                        logger.info(
+                            "Auto-generated %d new personalized job enquiry drafts", new_drafts
+                        )
+                except Exception as draft_err:
+                    logger.debug("Backfill draft error: %s", draft_err)
+
             with self._lock:
+                self.cycle_count += 1
                 self.last_poll_status = "completed"
                 self.last_error = None
         except Exception as exc:
-            logger.exception("Background scraping cycle failed: %s", exc)
+            logger.exception("Continuous discovery cycle failed: %s", exc)
             with self._lock:
                 self.last_poll_status = "error"
                 self.last_error = str(exc)
@@ -123,8 +147,9 @@ class ScraperManager:
                     "notified": stats.notified,
                     "errors": stats.errors,
                 }
-                interval = max(1, self.settings.poll_interval_minutes)
-                self.next_poll_at = (now_utc + timedelta(minutes=interval)).isoformat()
+                self.next_poll_at = (
+                    now_utc + timedelta(seconds=self.cooldown_seconds)
+                ).isoformat()
         return stats
 
     def trigger_poll(self, dry_run: bool = False) -> bool:
@@ -143,7 +168,7 @@ class ScraperManager:
         return True
 
     def start_scheduler(self) -> None:
-        """Start recurring background periodic scraping loop in a daemon thread."""
+        """Start continuous background discovery engine in a daemon thread."""
         if self._scheduler_thread and self._scheduler_thread.is_alive():
             return
 
@@ -151,24 +176,24 @@ class ScraperManager:
 
         def _loop() -> None:
             logger.info(
-                "Background scraper scheduler started (interval=%d min)",
-                self.settings.poll_interval_minutes,
+                "Continuous job discovery engine started (running continuously, cooldown=%ds between cycles)",
+                self.cooldown_seconds,
             )
-            time.sleep(2.0)
+            time.sleep(1.0)
             while not self._stop_event.is_set():
                 try:
                     self.execute_cycle(dry_run=False)
                 except Exception as exc:
-                    logger.error("Scraper cycle loop exception: %s", exc)
+                    logger.error("Continuous discovery cycle loop error: %s", exc)
 
-                interval_secs = max(30, self.settings.poll_interval_minutes * 60)
-                if self._stop_event.wait(interval_secs):
+                # Continuous mode: brief pause between full sweeps
+                if self._stop_event.wait(self.cooldown_seconds):
                     break
 
         self._scheduler_thread = threading.Thread(
             target=_loop,
             daemon=True,
-            name="ScraperSchedulerLoop",
+            name="ContinuousJobDiscoveryLoop",
         )
         self._scheduler_thread.start()
 

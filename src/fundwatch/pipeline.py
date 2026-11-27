@@ -46,6 +46,7 @@ def run_cycle(
     http_client: httpx.Client | None = None,
     print_callback: Any = None,
     feed_callback: Any = None,
+    auto_generate_drafts: bool = True,
 ) -> CycleStats:
     """
     Execute one complete polling cycle across all configured feeds.
@@ -236,6 +237,33 @@ def run_cycle(
                     db.mark_notified(article.id, 1)
                     stats.notified += 1
 
+            # Auto-generate personalized job enquiry draft for candidate
+            if auto_generate_drafts and not bootstrap_mode and not dry_run:
+                try:
+                    from fundwatch.outreach import generate_job_enquiry
+
+                    existing_draft = db.get_draft_by_article(article.id)
+                    if not existing_draft:
+                        cand_profile = db.get_candidate_profile("active")
+                        draft = generate_job_enquiry(
+                            article=article,
+                            extraction=extraction,
+                            settings=settings,
+                            candidate=cand_profile,
+                        )
+                        db.create_draft(draft)
+                        logger.info(
+                            "Auto-generated job enquiry draft %s for %s",
+                            draft.id,
+                            draft.company,
+                        )
+                except Exception as draft_err:
+                    logger.debug(
+                        "Could not auto-generate draft for article %s: %s",
+                        article.id,
+                        draft_err,
+                    )
+
     logger.info(
         "Cycle finished: fetched=%d, new=%d, matched=%d, notified=%d",
         stats.fetched,
@@ -244,3 +272,73 @@ def run_cycle(
         stats.notified,
     )
     return stats
+
+
+def auto_generate_missing_drafts(settings: Settings, db: Database, limit: int = 100) -> int:
+    """Find matched funding articles that do not have an outbox draft, discover emails, and create job enquiries."""
+    from fundwatch.email_finder import discover_founding_team_emails, extract_company_name
+    from fundwatch.outreach import generate_job_enquiry
+
+    articles, _ = db.get_articles_paged(limit=limit, matched_only=True)
+    existing_drafts = db.list_drafts(limit=2000)
+    draft_article_ids = {d.article_id for d in existing_drafts if d.article_id}
+    draft_companies = {d.company.strip().lower() for d in existing_drafts if d.company}
+
+    cand_profile = db.get_candidate_profile("active")
+    created = 0
+
+    for art_dict in articles:
+        art_id = art_dict["id"]
+        if art_id in draft_article_ids:
+            continue
+
+        raw_company = art_dict.get("company") or extract_company_name(
+            art_dict["title"], art_dict.get("summary") or ""
+        )
+        if raw_company and raw_company.strip().lower() in draft_companies:
+            continue
+
+        article = db.get_article(art_id)
+        if not article:
+            continue
+
+        extraction = db.get_extraction(art_id)
+        if extraction is None or not extraction.emails:
+            article_full_text = f"{article.title} {article.summary or ''}"
+            domain, founders, emails = discover_founding_team_emails(
+                company_name=raw_company,
+                article_text=article_full_text,
+                article_url=article.link,
+                known_domain=extraction.domain if extraction else None,
+                known_founders=extraction.founders if extraction else None,
+                hunter_api_key=settings.hunter_api_key,
+            )
+            if extraction is None:
+                extraction = Extraction(
+                    article_id=article.id,
+                    company=raw_company,
+                    domain=domain,
+                    founders=founders,
+                    emails=emails,
+                )
+            else:
+                extraction.company = raw_company or extraction.company
+                extraction.domain = domain or extraction.domain
+                extraction.founders = founders or extraction.founders
+                extraction.emails = emails or extraction.emails
+            db.save_extraction(extraction)
+
+        draft = generate_job_enquiry(
+            article=article,
+            extraction=extraction,
+            settings=settings,
+            candidate=cand_profile,
+        )
+        db.create_draft(draft)
+        draft_article_ids.add(article.id)
+        if draft.company:
+            draft_companies.add(draft.company.strip().lower())
+        created += 1
+        logger.info("Auto-generated job enquiry draft %s for %s", draft.id, draft.company)
+
+    return created
