@@ -5,10 +5,16 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 import smtplib
+import threading
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from dotenv import find_dotenv, set_key
 from fastapi import Body, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -20,7 +26,7 @@ from fundwatch.fetcher import inspect_feed
 from fundwatch.models import CandidateProfile, Extraction, Settings
 from fundwatch.notifiers import build_notifiers
 from fundwatch.outreach import check_resume, generate_job_enquiry, send_outreach_email
-from fundwatch.pipeline import run_cycle
+from fundwatch.pipeline import CycleStats, run_cycle
 from fundwatch.resume_parser import parse_resume_to_profile
 from fundwatch.web.templates import get_assets_dir, get_dashboard_html
 
@@ -29,12 +35,167 @@ logger = logging.getLogger(__name__)
 RESUMES_DIR = Path("data/resumes")
 
 
-def create_app(settings: Settings, db: Database) -> FastAPI:
+class ScraperManager:
+    """Manages background scraping lifecycle, live feed progress, and periodic scheduling."""
+
+    def __init__(self, settings: Settings, db: Database) -> None:
+        self.settings = settings
+        self.db = db
+        self.is_scraping: bool = False
+        self.current_feed: str | None = None
+        self.feed_index: int = 0
+        self.feed_total: int = len(settings.feeds)
+        self.last_polled_at: str | None = None
+        self.last_poll_status: str | None = None
+        self.last_poll_stats: dict[str, int] | None = None
+        self.last_error: str | None = None
+        self.next_poll_at: str | None = None
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._scheduler_thread: threading.Thread | None = None
+
+    def get_status(self) -> dict[str, Any]:
+        with self._lock:
+            progress = 0
+            if self.feed_total > 0 and self.is_scraping:
+                progress = round((self.feed_index / self.feed_total) * 100)
+            elif not self.is_scraping and self.last_polled_at:
+                progress = 100
+
+            return {
+                "is_scraping": self.is_scraping,
+                "current_feed": self.current_feed,
+                "feed_index": self.feed_index,
+                "feed_total": self.feed_total,
+                "progress_percent": progress,
+                "last_polled_at": self.last_polled_at,
+                "last_poll_status": self.last_poll_status,
+                "last_poll_stats": self.last_poll_stats,
+                "last_error": self.last_error,
+                "next_poll_at": self.next_poll_at,
+                "interval_minutes": self.settings.poll_interval_minutes,
+            }
+
+    def _feed_progress(self, index: int, total: int, feed_name: str) -> None:
+        with self._lock:
+            self.feed_index = index
+            self.feed_total = total
+            self.current_feed = feed_name
+
+    def execute_cycle(self, dry_run: bool = False) -> CycleStats:
+        with self._lock:
+            self.is_scraping = True
+            self.feed_index = 0
+            self.feed_total = len(self.settings.feeds)
+            self.current_feed = "Starting scrape cycle..."
+            self.last_poll_status = "running"
+            self.last_error = None
+
+        stats = CycleStats()
+        try:
+            notifiers = [] if dry_run else build_notifiers(self.settings)
+            stats = run_cycle(
+                settings=self.settings,
+                db=self.db,
+                notifiers=notifiers,
+                dry_run=dry_run,
+                delay_between_feeds=0.5,
+                feed_callback=self._feed_progress,
+            )
+            with self._lock:
+                self.last_poll_status = "completed"
+                self.last_error = None
+        except Exception as exc:
+            logger.exception("Background scraping cycle failed: %s", exc)
+            with self._lock:
+                self.last_poll_status = "error"
+                self.last_error = str(exc)
+        finally:
+            now_utc = datetime.now(timezone.utc)
+            with self._lock:
+                self.is_scraping = False
+                self.current_feed = None
+                self.last_polled_at = now_utc.isoformat()
+                self.last_poll_stats = {
+                    "fetched": stats.fetched,
+                    "new": stats.new,
+                    "matched": stats.matched,
+                    "notified": stats.notified,
+                    "errors": stats.errors,
+                }
+                interval = max(1, self.settings.poll_interval_minutes)
+                self.next_poll_at = (now_utc + timedelta(minutes=interval)).isoformat()
+        return stats
+
+    def trigger_poll(self, dry_run: bool = False) -> bool:
+        """Trigger an on-demand poll in a background thread if not already running."""
+        with self._lock:
+            if self.is_scraping:
+                return False
+
+        worker = threading.Thread(
+            target=self.execute_cycle,
+            args=(dry_run,),
+            daemon=True,
+            name="ScraperWorkerThread",
+        )
+        worker.start()
+        return True
+
+    def start_scheduler(self) -> None:
+        """Start recurring background periodic scraping loop in a daemon thread."""
+        if self._scheduler_thread and self._scheduler_thread.is_alive():
+            return
+
+        self._stop_event.clear()
+
+        def _loop() -> None:
+            logger.info(
+                "Background scraper scheduler started (interval=%d min)",
+                self.settings.poll_interval_minutes,
+            )
+            time.sleep(2.0)
+            while not self._stop_event.is_set():
+                try:
+                    self.execute_cycle(dry_run=False)
+                except Exception as exc:
+                    logger.error("Scraper cycle loop exception: %s", exc)
+
+                interval_secs = max(30, self.settings.poll_interval_minutes * 60)
+                if self._stop_event.wait(interval_secs):
+                    break
+
+        self._scheduler_thread = threading.Thread(
+            target=_loop,
+            daemon=True,
+            name="ScraperSchedulerLoop",
+        )
+        self._scheduler_thread.start()
+
+    def stop_scheduler(self) -> None:
+        self._stop_event.set()
+
+
+def create_app(
+    settings: Settings,
+    db: Database,
+    auto_start_scraper: bool = True,
+) -> FastAPI:
     """Create and configure the FastAPI web application."""
+    scraper = ScraperManager(settings, db)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        if auto_start_scraper and "PYTEST_CURRENT_TEST" not in os.environ:
+            scraper.start_scheduler()
+        yield
+        scraper.stop_scheduler()
+
     app = FastAPI(
         title="fundwatch Dashboard",
         description="Clean monochrome web dashboard for monitoring startup funding rounds.",
         version=__version__,
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -159,9 +320,34 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
         feed_obj = Feed(name=feed_name, url=url)
         return inspect_feed(feed_obj, settings.user_agent, timeout=settings.request_timeout_seconds)
 
+    @app.get("/api/scraper/status")
+    def get_scraper_status() -> dict[str, Any]:
+        """Return real-time scraping state, active feed, and countdown."""
+        return scraper.get_status()
+
+    @app.post("/api/scraper/poll")
+    def trigger_scraper_poll(dry_run: bool = Query(False)) -> dict[str, Any]:
+        """Trigger an asynchronous poll cycle in the background."""
+        started = scraper.trigger_poll(dry_run=dry_run)
+        return {
+            "ok": True,
+            "status": "started" if started else "already_running",
+            "message": (
+                "Scrape cycle started in background"
+                if started
+                else "Scrape cycle is already in progress"
+            ),
+        }
+
     @app.get("/api/config")
     def get_config_summary() -> dict[str, Any]:
         """Return safe, non-secret configuration details."""
+        has_pw = bool(settings.smtp_password)
+        masked_pw = (
+            ("•" * 12 + settings.smtp_password[-4:])
+            if (settings.smtp_password and len(settings.smtp_password) >= 4)
+            else ("••••••••" if has_pw else "")
+        )
         return {
             "poll_interval_minutes": settings.poll_interval_minutes,
             "jitter_seconds": settings.jitter_seconds,
@@ -196,10 +382,12 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
                 "configured": bool(
                     settings.smtp_host and settings.smtp_user and settings.smtp_password
                 ),
-                "host": settings.smtp_host,
-                "port": settings.smtp_port,
-                "user": settings.smtp_user,
-                "from_email": settings.smtp_from or settings.smtp_user or settings.candidate_email,
+                "host": settings.smtp_host or "",
+                "port": settings.smtp_port or 587,
+                "user": settings.smtp_user or "",
+                "from_email": settings.smtp_from or settings.smtp_user or settings.candidate_email or "",
+                "has_password": has_pw,
+                "password_masked": masked_pw,
             },
         }
 
@@ -596,26 +784,67 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
 
     @app.post("/api/outbox/smtp/config")
     def update_smtp_config(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
-        """Configure runtime SMTP settings and candidate profile."""
-        if "smtp_host" in payload:
-            settings.smtp_host = str(payload["smtp_host"]).strip() or None
-        if "smtp_port" in payload:
+        """Configure runtime SMTP settings and candidate profile, persisting to .env."""
+        env_file = find_dotenv(usecwd=True) or ".env"
+
+        if "smtp_host" in payload and payload["smtp_host"] is not None:
+            val = str(payload["smtp_host"]).strip() or None
+            settings.smtp_host = val
+            if val:
+                try:
+                    set_key(env_file, "SMTP_HOST", val)
+                except Exception as e:
+                    logger.warning("Could not persist SMTP_HOST to .env: %s", e)
+
+        if "smtp_port" in payload and payload["smtp_port"] is not None:
             try:
-                settings.smtp_port = int(payload["smtp_port"])
-            except (ValueError, TypeError):
-                pass
-        if "smtp_user" in payload:
-            settings.smtp_user = str(payload["smtp_user"]).strip() or None
-        if "smtp_password" in payload:
-            settings.smtp_password = str(payload["smtp_password"]).strip() or None
-        if "smtp_from" in payload:
-            settings.smtp_from = str(payload["smtp_from"]).strip() or None
+                port_val = int(payload["smtp_port"])
+                settings.smtp_port = port_val
+                set_key(env_file, "SMTP_PORT", str(port_val))
+            except (ValueError, TypeError, Exception) as e:
+                logger.warning("Could not persist SMTP_PORT to .env: %s", e)
+
+        if "smtp_user" in payload and payload["smtp_user"] is not None:
+            val = str(payload["smtp_user"]).strip() or None
+            settings.smtp_user = val
+            if val:
+                try:
+                    set_key(env_file, "SMTP_USER", val)
+                except Exception as e:
+                    logger.warning("Could not persist SMTP_USER to .env: %s", e)
+
+        if "smtp_password" in payload and payload["smtp_password"] is not None:
+            pw_val = str(payload["smtp_password"]).strip()
+            # Only update password if a non-empty string was provided
+            if pw_val:
+                settings.smtp_password = pw_val
+                try:
+                    set_key(env_file, "SMTP_PASSWORD", pw_val)
+                except Exception as e:
+                    logger.warning("Could not persist SMTP_PASSWORD to .env: %s", e)
+
+        if "smtp_from" in payload and payload["smtp_from"] is not None:
+            val = str(payload["smtp_from"]).strip() or None
+            settings.smtp_from = val
+            if val:
+                try:
+                    set_key(env_file, "SMTP_FROM", val)
+                except Exception as e:
+                    logger.warning("Could not persist SMTP_FROM to .env: %s", e)
+
         if "candidate_name" in payload:
             settings.candidate_name = str(payload["candidate_name"]).strip()
         if "candidate_email" in payload:
             settings.candidate_email = str(payload["candidate_email"]).strip()
         if "resume_path" in payload:
             settings.resume_path = str(payload["resume_path"]).strip()
+
+        has_pw = bool(settings.smtp_password)
+        masked_pw = (
+            ("•" * 12 + settings.smtp_password[-4:])
+            if (settings.smtp_password and len(settings.smtp_password) >= 4)
+            else ("••••••••" if has_pw else "")
+        )
 
         return {
             "ok": True,
@@ -625,46 +854,67 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             "smtp_host": settings.smtp_host,
             "smtp_port": settings.smtp_port,
             "smtp_user": settings.smtp_user,
+            "has_password": has_pw,
+            "password_masked": masked_pw,
             "candidate_name": settings.candidate_name,
             "candidate_email": settings.candidate_email,
             "resume_path": settings.resume_path,
         }
 
     @app.post("/api/outbox/smtp/test")
-    def test_smtp_connection() -> dict[str, Any]:
+    def test_smtp_connection(payload: dict[str, Any] | None = Body(None)) -> dict[str, Any]:
         """Test SMTP connection and credentials without sending an email."""
-        if not settings.smtp_host:
+        req = payload or {}
+        test_host = req.get("host") or settings.smtp_host
+        test_port = req.get("port") or settings.smtp_port or 587
+        test_user = req.get("user") or settings.smtp_user
+        # Use provided password or fall back to configured settings.smtp_password from .env
+        test_pw = req.get("password") or settings.smtp_password
+
+        if not test_host:
             return {"ok": False, "error": "SMTP_HOST is not configured."}
 
-        port = settings.smtp_port or 587
         try:
-            with smtplib.SMTP(settings.smtp_host, port, timeout=10.0) as server:
+            port_num = int(test_port)
+        except (ValueError, TypeError):
+            port_num = 587
+
+        try:
+            with smtplib.SMTP(test_host, port_num, timeout=10.0) as server:
                 try:
                     server.starttls()
                 except smtplib.SMTPNotSupportedError:
                     pass
-                if settings.smtp_user and settings.smtp_password:
-                    server.login(settings.smtp_user, settings.smtp_password)
+                if test_user and test_pw:
+                    server.login(test_user, test_pw)
             return {
                 "ok": True,
                 "message": (
-                    f"Successfully connected and authenticated with {settings.smtp_host}:{port}!"
+                    f"Successfully connected and authenticated with {test_host}:{port_num}!"
                 ),
             }
         except Exception as exc:
             return {"ok": False, "error": f"SMTP connection failed: {exc}"}
 
     @app.post("/api/poll")
-    def trigger_poll(dry_run: bool = Query(False)) -> dict[str, Any]:
-        """Trigger an on-demand poll cycle."""
-        notifiers = [] if dry_run else build_notifiers(settings)
-        cycle_stats = run_cycle(
-            settings=settings,
-            db=db,
-            notifiers=notifiers,
-            dry_run=dry_run,
-            delay_between_feeds=0.5,
-        )
+    def trigger_poll(
+        dry_run: bool = Query(False),
+        async_mode: bool = Query(True),
+    ) -> dict[str, Any]:
+        """Trigger an on-demand poll cycle (asynchronous by default)."""
+        if async_mode:
+            started = scraper.trigger_poll(dry_run=dry_run)
+            return {
+                "ok": True,
+                "status": "started" if started else "already_running",
+                "message": (
+                    "Scrape cycle started in background"
+                    if started
+                    else "Scrape cycle is already in progress"
+                ),
+            }
+
+        cycle_stats = scraper.execute_cycle(dry_run=dry_run)
         return {
             "ok": True,
             "dry_run": dry_run,

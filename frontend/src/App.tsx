@@ -16,6 +16,7 @@ import {
   FeedInfo,
   ResumeStatus,
   ConfigSummary,
+  ScraperStatus,
 } from './types'
 import {
   fetchArticles,
@@ -24,13 +25,15 @@ import {
   fetchConfig,
   fetchResumeStatus,
   fetchCandidateProfile,
+  fetchScraperStatus,
+  triggerScraperPoll,
   generateDraft,
   updateDraft,
   deleteDraft,
   dismissArticle,
   sendDraft,
 } from './api/client'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, RefreshCw, Loader2, Activity } from 'lucide-react'
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('deals')
@@ -57,6 +60,11 @@ export const App: React.FC = () => {
   const [resumeStatus, setResumeStatus] = useState<ResumeStatus | null>(null)
   const [config, setConfig] = useState<ConfigSummary | null>(null)
   const [candidateProfile, setCandidateProfile] = useState<ICandidateProfile | null>(null)
+
+  // Live background scraping status
+  const [scraperStatus, setScraperStatus] = useState<ScraperStatus | null>(null)
+  const [triggeringScrape, setTriggeringScrape] = useState<boolean>(false)
+  const prevScrapingRef = React.useRef<boolean>(false)
 
   // Draft modal & interaction states
   const [selectedDraft, setSelectedDraft] = useState<DraftEmail | null>(null)
@@ -155,6 +163,58 @@ export const App: React.FC = () => {
     loadFeeds()
     loadMetadata()
   }, [])
+
+  // Poll background scraper status every 2.5 seconds
+  useEffect(() => {
+    let isMounted = true
+    const checkScraper = async () => {
+      try {
+        const st = await fetchScraperStatus()
+        if (isMounted) setScraperStatus(st)
+      } catch {
+        // silent polling catch
+      }
+    }
+
+    checkScraper()
+    const timer = setInterval(checkScraper, 2500)
+    return () => {
+      isMounted = false
+      clearInterval(timer)
+    }
+  }, [])
+
+  // Auto-refresh feeds and deals when a background scrape completes
+  useEffect(() => {
+    if (prevScrapingRef.current && scraperStatus && !scraperStatus.is_scraping) {
+      loadArticles()
+      loadFeeds()
+      const stats = scraperStatus.last_poll_stats
+      if (stats && stats.new > 0) {
+        showToast(`Feed scrape complete: ${stats.new} new funding rounds discovered!`)
+      } else if (stats) {
+        showToast(`Feed scrape complete: all ${stats.fetched} articles up to date.`)
+      }
+    }
+    if (scraperStatus) {
+      prevScrapingRef.current = scraperStatus.is_scraping
+    }
+  }, [scraperStatus?.is_scraping])
+
+  // Manual trigger for scraper
+  const handleTriggerScrape = async () => {
+    setTriggeringScrape(true)
+    try {
+      const res = await triggerScraperPoll()
+      showToast(res.message || 'Scraping cycle started in background!')
+      const st = await fetchScraperStatus()
+      setScraperStatus(st)
+    } catch (err: unknown) {
+      showToast(`Scrape trigger failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setTriggeringScrape(false)
+    }
+  }
 
   // Handle Generate Draft action from Deals Feed
   const handleDraftJobEnquiry = async (article: Article) => {
@@ -273,6 +333,45 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Live Background Scraper Status Badge / Control */}
+            {scraperStatus?.is_scraping ? (
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-violet-50 border border-violet-200 text-violet-800 text-xs shadow-xs animate-pulse">
+                <Loader2 size={12} className="animate-spin text-violet-600" />
+                <span className="font-semibold">
+                  Scraping ({scraperStatus.feed_index}/{scraperStatus.feed_total}):
+                </span>
+                <span className="font-medium max-w-[140px] truncate text-violet-700">
+                  {scraperStatus.current_feed || 'Feeds...'}
+                </span>
+                <span className="text-[10px] font-mono font-bold bg-violet-200/80 text-violet-900 px-1.5 py-0.5 rounded">
+                  {scraperStatus.progress_percent}%
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                {scraperStatus?.last_polled_at && (
+                  <span className="hidden lg:inline-flex items-center gap-1 text-[11px] text-zinc-400 font-mono">
+                    <Activity size={11} className="text-emerald-500" />
+                    Last scraped:{' '}
+                    {new Date(scraperStatus.last_polled_at).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleTriggerScrape}
+                  disabled={triggeringScrape || scraperStatus?.is_scraping}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-medium border border-zinc-200/70 transition disabled:opacity-50 cursor-pointer"
+                  title="Manually fetch and process latest startup deals across all configured RSS and news feeds"
+                >
+                  <RefreshCw size={11} className={triggeringScrape ? 'animate-spin' : ''} />
+                  <span>Scrape Feeds</span>
+                </button>
+              </div>
+            )}
+
             <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-50 border border-zinc-200/60 text-zinc-600 text-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="font-medium">System Online</span>
@@ -359,6 +458,7 @@ export const App: React.FC = () => {
               <SmtpSettings
                 config={config}
                 showToast={showToast}
+                onConfigSaved={loadMetadata}
               />
             )}
           </div>

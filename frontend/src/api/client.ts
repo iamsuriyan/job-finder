@@ -8,6 +8,7 @@ import {
   FeedInfo,
   OverallStats,
   ResumeStatus,
+  ScraperStatus,
 } from '../types'
 
 const BASE_URL = ''
@@ -213,6 +214,40 @@ export async function regenerateDraftsWithProfile(): Promise<{ updated_count: nu
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: 'Failed to regenerate drafts' }))
     throw new Error(err.detail || 'Failed to regenerate drafts')
+  }
+  return res.json()
+}
+
+export async function fetchScraperStatus(): Promise<ScraperStatus> {
+  const res = await fetch(`${BASE_URL}/api/scraper/status`)
+  if (!res.ok) throw new Error('Failed to load scraper status')
+  return res.json()
+}
+
+export async function triggerScraperPoll(): Promise<{ ok: boolean; status: string; message: string }> {
+  const res = await fetch(`${BASE_URL}/api/scraper/poll`, { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to trigger scraper poll')
+  return res.json()
+}
+
+export async function saveSmtpConfig(payload: {
+  smtp_host?: string
+  smtp_port?: number
+  smtp_user?: string
+  smtp_password?: string
+  smtp_from?: string
+  candidate_name?: string
+  candidate_email?: string
+  resume_path?: string
+}): Promise<any> {
+  const res = await fetch(`${BASE_URL}/api/outbox/smtp/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to save SMTP configuration' }))
+    throw new Error(err.detail || 'Failed to save SMTP configuration')
   }
   return res.json()
 }

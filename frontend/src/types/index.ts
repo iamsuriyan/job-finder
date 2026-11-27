@@ -149,5 +149,27 @@ export interface ConfigSummary {
     port: number
     user: string
     from_email: string
+    has_password?: boolean
+    password_masked?: string
   }
+}
+
+export interface ScraperStatus {
+  is_scraping: boolean
+  current_feed: string | null
+  feed_index: number
+  feed_total: number
+  progress_percent: number
+  last_polled_at: string | null
+  last_poll_status: string | null
+  last_poll_stats?: {
+    fetched: number
+    new: number
+    matched: number
+    notified: number
+    errors: number
+  } | null
+  last_error: string | null
+  next_poll_at: string | null
+  interval_minutes: number
 }

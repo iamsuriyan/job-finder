@@ -335,7 +335,7 @@ def ui(
 
     configure_logging(settings.log_level)
     db = Database(settings.db_path)
-    fastapi_app = create_app(settings=settings, db=db)
+    fastapi_app = create_app(settings=settings, db=db, auto_start_scraper=True)
 
     console.print(f"[bold green]Starting fundwatch dashboard at http://{host}:{port}[/bold green]")
     uvicorn.run(fastapi_app, host=host, port=port, log_level="warning")

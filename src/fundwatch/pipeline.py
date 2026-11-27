@@ -45,6 +45,7 @@ def run_cycle(
     delay_between_feeds: float = 1.0,
     http_client: httpx.Client | None = None,
     print_callback: Any = None,
+    feed_callback: Any = None,
 ) -> CycleStats:
     """
     Execute one complete polling cycle across all configured feeds.
@@ -84,6 +85,12 @@ def run_cycle(
         warn_cb = lambda msg: send_system_alert_to_all(notifiers, msg)  # noqa: E731
 
     for idx, feed in enumerate(settings.feeds):
+        if feed_callback:
+            try:
+                feed_callback(idx + 1, len(settings.feeds), feed.name)
+            except Exception:
+                pass
+
         if idx > 0 and delay_between_feeds > 0:
             time.sleep(delay_between_feeds)
 
