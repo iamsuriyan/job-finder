@@ -38,33 +38,62 @@ def check_resume(resume_path: str | Path | None = None) -> dict[str, Any]:
 def resolve_recipient(
     extraction: Extraction | None,
 ) -> tuple[str, str | None]:
-    """Extract best candidate recipient name and email from extraction metadata."""
+    """Extract best candidate recipient name and email from extraction metadata.
+
+    Guarantees that unverified role-inboxes (founders@, etc.) are never blindly chosen.
+    Priority:
+    1. Verified founder personal email (hunter_api, smtp_probe)
+    2. Real website-scraped company contact email (e.g. info@domain, contact@domain)
+    3. Founder pattern email on a verified company domain
+    4. Identified founder name with None (prompting review/manual entry to avoid bounce)
+    5. 'Founding Team' with None
+    """
     if not extraction:
         return "Founding Team", None
 
-    # 1. Search discovered emails for a founder/co-founder or CEO
+    # Priority 1: Verified personal founder/executive email
     if extraction.emails:
         for em in extraction.emails:
             role = str(em.get("role", "")).lower()
-            if any(k in role for k in ("founder", "ceo", "co-founder")):
+            source = str(em.get("source", "")).lower()
+            is_founder = any(k in role for k in ("founder", "ceo", "co-founder")) and "inbox" not in role
+            if is_founder and em.get("verified") is True and "role_inbox" not in source:
                 return str(em.get("name") or "Founder"), str(em.get("email"))
 
-        # Check for role inboxes (founders@, ceo@, contact@)
+    # Priority 2: Real website-scraped company contact email (deliverable mailbox on domain)
+    if extraction.emails:
         for em in extraction.emails:
             source = str(em.get("source", "")).lower()
-            if source == "role_inbox" or "inbox" in str(em.get("role", "")).lower():
-                return str(em.get("name") or "Founding Team"), str(em.get("email"))
+            if source == "website_scrape" and em.get("verified") is True:
+                return str(em.get("name") or "Team"), str(em.get("email"))
 
-        # Fallback to the first email found
-        first_em = extraction.emails[0]
-        return str(first_em.get("name") or "Team"), str(first_em.get("email"))
+    # Priority 3: Founder pattern email on verified company domain
+    if extraction.emails:
+        for em in extraction.emails:
+            role = str(em.get("role", "")).lower()
+            source = str(em.get("source", "")).lower()
+            is_founder = any(k in role for k in ("founder", "ceo", "co-founder")) and "inbox" not in role
+            if is_founder and source in ("pattern_mx", "pattern_permutation"):
+                return str(em.get("name") or "Founder"), str(em.get("email"))
 
-    # 2. Search extracted founder names if no email yet discovered
+    # Priority 4: Any verified email in extraction.emails
+    if extraction.emails:
+        for em in extraction.emails:
+            if em.get("verified") is True and em.get("email"):
+                return str(em.get("name") or "Team"), str(em.get("email"))
+
+    # Priority 5: Search extracted founder names if no verified email yet discovered
     if extraction.founders and len(extraction.founders) > 0:
         first_founder = extraction.founders[0]
         name = first_founder.get("name") if isinstance(first_founder, dict) else str(first_founder)
         if name:
             return name, None
+
+    # Priority 6: Fallback to first email only if verified or not an unverified role_inbox guess
+    if extraction.emails and len(extraction.emails) > 0:
+        for em in extraction.emails:
+            if em.get("email") and (em.get("verified") is True or em.get("source") != "role_inbox"):
+                return str(em.get("name") or "Team"), str(em.get("email"))
 
     return "Founding Team", None
 

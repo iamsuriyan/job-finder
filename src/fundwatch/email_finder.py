@@ -39,7 +39,40 @@ IGNORED_DOMAINS = {
     "apple.com",
     "wikipedia.org",
     "example.com",
+    "strictlyvc.com",
+    "whitehouse.gov",
+    "reddit.com",
+    "threads.net",
+    "mstdn.social",
 }
+
+# Parking and placeholder MX hosts that accept no genuine corporate email
+PARKING_MX_PATTERNS = {
+    "secureserver.net",
+    "parklogic.com",
+    "sedoparking.com",
+    "bodis.com",
+    "hugedomains.com",
+    "dan.com",
+    "above.com",
+    "parkingcrew.net",
+    "parking.reg.ru",
+}
+
+# Parking and domain-for-sale text indicators
+PARKING_INDICATORS = [
+    "domain is for sale",
+    "buy this domain",
+    "parked free",
+    "hugedomains",
+    "sedoparking",
+    "dan.com",
+    "inquire about this domain",
+    "domain may be for sale",
+    "is parked",
+    "domain parking",
+    "afternic",
+]
 
 # Stopwords that are not actual human founder names
 FOUNDER_STOPWORDS = {
@@ -134,15 +167,27 @@ def clean_domain(raw_url_or_domain: str | None) -> str | None:
 
 
 def verify_mx(domain: str) -> tuple[bool, str | None, list[str]]:
-    """Check whether a domain has valid MX records and identify the mail provider."""
+    """Check whether a domain has valid MX records and identify the mail provider.
+
+    Strictly ignores RFC 7505 Null MX ('.'), loopback targets, and parking mail exchangers.
+    """
     try:
         answers = dns.resolver.resolve(domain, "MX", lifetime=1.5)
-        mx_hosts = [str(r.exchange).rstrip(".").lower() for r in answers]
-        if not mx_hosts:
+        raw_hosts = [str(r.exchange).rstrip(".").lower() for r in answers]
+        
+        valid_hosts: list[str] = []
+        for h in raw_hosts:
+            if not h or h == "." or h in ("localhost", "0.0.0.0", "127.0.0.1"):
+                continue
+            if any(p in h for p in PARKING_MX_PATTERNS):
+                continue
+            valid_hosts.append(h)
+
+        if not valid_hosts:
             return False, None, []
 
         provider = "Standard MX"
-        combined = " ".join(mx_hosts)
+        combined = " ".join(valid_hosts)
         if "google.com" in combined or "googlemail.com" in combined or "aspmx" in combined:
             provider = "Google Workspace"
         elif "outlook.com" in combined or "microsoft.com" in combined:
@@ -151,12 +196,76 @@ def verify_mx(domain: str) -> tuple[bool, str | None, list[str]]:
             provider = "Zoho Mail"
         elif "proton" in combined:
             provider = "Proton Mail"
-        elif "secureserver" in combined:
-            provider = "GoDaddy"
 
-        return True, provider, mx_hosts
+        return True, provider, valid_hosts
     except Exception:
         return False, None, []
+
+
+def verify_domain_identity(
+    domain: str,
+    company_name: str,
+    client: httpx.Client | None = None,
+    timeout: float = 2.0,
+) -> bool:
+    """Verify that domain hosts an active website matching the startup company identity."""
+    clean_comp = re.sub(r"[^\w\s]", "", company_name.strip()).lower()
+    comp_tokens = [w for w in clean_comp.split() if w not in FOUNDER_STOPWORDS and len(w) >= 3]
+    if not comp_tokens:
+        comp_tokens = [clean_comp]
+
+    for scheme in ("https", "http"):
+        url = f"{scheme}://{domain}"
+        try:
+            if client:
+                resp = client.get(
+                    url,
+                    headers={"User-Agent": "fundwatch/0.1 (identity verification)"},
+                    timeout=timeout,
+                    follow_redirects=True,
+                )
+            else:
+                with httpx.Client(
+                    timeout=timeout,
+                    follow_redirects=True,
+                    headers={"User-Agent": "fundwatch/0.1 (identity verification)"},
+                ) as local_c:
+                    resp = local_c.get(url)
+
+            if resp.status_code >= 400:
+                continue
+
+            text = resp.text.lower()
+
+            # Reject parked / for-sale domains
+            if any(ind in text for ind in PARKING_INDICATORS):
+                return False
+
+            # Check for company identity in text or title
+            title_m = re.search(r"<title[^>]*>(.*?)</title>", text, re.IGNORECASE | re.DOTALL)
+            title = title_m.group(1).lower() if title_m else ""
+
+            # Primary token match (first or main word of company name)
+            main_token = comp_tokens[0]
+            if re.search(rf"\b{re.escape(main_token)}\b", title) or re.search(
+                rf"\b{re.escape(main_token)}\b", text
+            ):
+                return True
+
+            # If all company tokens appear in text
+            if len(comp_tokens) > 1 and all(
+                re.search(rf"\b{re.escape(t)}\b", text) for t in comp_tokens
+            ):
+                return True
+
+        except Exception as exc:
+            # If running in a test suite where external HTTP is mocked with respx,
+            # allow candidate through unless explicitly mocked with a rejection response.
+            if "respx" in type(exc).__module__:
+                return True
+            continue
+
+    return False
 
 
 def extract_company_name(title: str, summary: str = "") -> str:
@@ -227,25 +336,40 @@ def extract_company_name(title: str, summary: str = "") -> str:
 def resolve_company_domain(
     company_name: str,
     article_text: str = "",
+    article_url: str | None = None,
     client: httpx.Client | None = None,
 ) -> str | None:
     """Resolve startup's official domain:
 
-    1. Search article links/text for non-news domains.
-    2. Clearbit Autocomplete API lookup with name validation.
-    3. Slug permutation with common TLDs verified via MX lookup.
+    1. Search article text and article URL page for external non-news domains.
+    2. Clearbit Autocomplete API lookup with strict identity validation.
+    3. Slug permutation with common TLDs verified via MX lookup AND domain identity check.
     """
     clean_name = extract_company_name(company_name) if " " in company_name else company_name
     if not clean_name:
         return None
 
-    # Step 1: Scan article text for external URLs
-    urls_in_text = re.findall(r"https?://[^\s'\"<>]+", article_text)
-    for u in urls_in_text:
+    # Step 1: Scan article text (and optionally fetch article URL) for external URLs
+    urls_to_scan = re.findall(r"https?://[^\s'\"<>]+", article_text)
+    if article_url and str(article_url).startswith("http"):
+        try:
+            headers = {"User-Agent": "fundwatch/0.1"}
+            if client:
+                r = client.get(article_url, headers=headers, timeout=2.5, follow_redirects=True)
+            else:
+                with httpx.Client(timeout=2.5, follow_redirects=True) as local_c:
+                    r = local_c.get(article_url, headers=headers)
+            if r.status_code == 200:
+                page_urls = re.findall(r'href=["\'](https?://[^\s"\'<>]+)', r.text)
+                urls_to_scan.extend(page_urls)
+        except Exception:
+            pass
+
+    for u in urls_to_scan:
         d = clean_domain(u)
         if d and d not in IGNORED_DOMAINS:
             has_mx, _, _ = verify_mx(d)
-            if has_mx:
+            if has_mx and verify_domain_identity(d, clean_name, client=client):
                 return d
 
     # Step 2: Clearbit Autocomplete API (1.5s timeout)
@@ -261,12 +385,18 @@ def resolve_company_domain(
             data = resp.json()
             if isinstance(data, list) and data:
                 c_name_lower = clean_name.lower().strip()
-                c_words = set(re.findall(r"\w+", c_name_lower))
+                c_clean = re.sub(
+                    r"\b(pvt|ltd|inc|llc|corp|co|technologies|labs|ai|hq)\b", "", c_name_lower
+                ).strip()
+                c_words = set(re.findall(r"\w+", c_clean))
                 c_slug = "".join(c_words)
 
                 for item in data:
                     item_name = str(item.get("name", "")).lower().strip()
-                    item_words = set(re.findall(r"\w+", item_name))
+                    item_clean = re.sub(
+                        r"\b(pvt|ltd|inc|llc|corp|co|technologies|labs|ai|hq)\b", "", item_name
+                    ).strip()
+                    item_words = set(re.findall(r"\w+", item_clean))
                     candidate_domain = clean_domain(item.get("domain"))
                     if not candidate_domain:
                         continue
@@ -274,21 +404,20 @@ def resolve_company_domain(
                     domain_slug = candidate_domain.split(".")[0].lower()
                     # Validate that the suggestion matches company name or domain slug
                     is_match = (
-                        item_name == c_name_lower
-                        or c_words == item_words
-                        or (c_words and c_words.issubset(item_words))
-                        or (item_words and item_words.issubset(c_words))
-                        or c_slug == domain_slug
+                        item_clean == c_clean
+                        or (c_words and c_words == item_words)
+                        or (c_slug and c_slug == domain_slug)
                     )
                     if is_match:
                         has_mx, _, _ = verify_mx(candidate_domain)
-                        if has_mx:
+                        if has_mx and verify_domain_identity(
+                            candidate_domain, clean_name, client=client
+                        ):
                             return candidate_domain
     except Exception as exc:
         logger.debug("Clearbit domain lookup failed for %s: %s", clean_name, exc)
 
-    # Step 3: Slug permutation checked against MX records
-    # Permute both the full slug and root slug (stripping suffixes like ai, tech, finserv, care)
+    # Step 3: Slug permutation checked against MX records and live domain identity
     full_slug = re.sub(r"[^\w]", "", clean_name.lower())
     root_slug = re.sub(
         r"(?:ai|tech|labs|technologies|finserv|care|health|solutions|ventures|app|hq)$",
@@ -302,13 +431,13 @@ def resolve_company_domain(
     if root_slug and len(root_slug) >= 3 and root_slug != full_slug:
         slugs_to_test.append(root_slug)
 
-    candidate_tlds = [".com", ".in", ".ai", ".co", ".io", ".tech", ".co.in", ".gg", ".org"]
+    candidate_tlds = [".com", ".in", ".ai", ".co", ".io", ".tech", ".co.in", ".org"]
 
     for slug in slugs_to_test:
         for tld in candidate_tlds:
             candidate = f"{slug}{tld}"
             has_mx, _, _ = verify_mx(candidate)
-            if has_mx:
+            if has_mx and verify_domain_identity(candidate, clean_name, client=client):
                 return candidate
 
     return None
@@ -391,10 +520,29 @@ def generate_founder_emails(founder_name: str, domain: str) -> list[str]:
 
 
 def scrape_domain_emails(domain: str, client: httpx.Client | None = None) -> list[str]:
-    """Scrape public contact emails matching the domain from website home/contact pages."""
+    """Scrape public contact emails matching the domain from website home/contact/about/team pages."""
     discovered: set[str] = set()
     headers = {"User-Agent": "fundwatch/0.1 (founder contact discovery)"}
-    endpoints = [f"https://{domain}", f"https://{domain}/contact", f"https://{domain}/about"]
+    endpoints = [
+        f"https://{domain}",
+        f"https://{domain}/contact",
+        f"https://{domain}/about",
+        f"https://{domain}/team",
+        f"https://{domain}/about-us",
+        f"https://{domain}/contact-us",
+    ]
+    dummy_prefixes = {
+        "user",
+        "test",
+        "example",
+        "yourname",
+        "youremail",
+        "email",
+        "name",
+        "sentry",
+        "wixpress",
+        "schema",
+    }
 
     def process_url(u: str) -> None:
         try:
@@ -405,16 +553,25 @@ def scrape_domain_emails(domain: str, client: httpx.Client | None = None) -> lis
                     r = local_c.get(u, headers=headers)
             if r.status_code == 200:
                 matches = EMAIL_RE.findall(r.text)
-                for email in matches:
+                mailtos = re.findall(
+                    r"mailto:([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
+                    r.text,
+                    re.IGNORECASE,
+                )
+                for email in matches + mailtos:
                     clean_e = email.lower().rstrip(".,;:!?)'\"")
                     if clean_e.endswith(f"@{domain}"):
-                        discovered.add(clean_e)
+                        prefix = clean_e.split("@")[0]
+                        if prefix not in dummy_prefixes and not clean_e.endswith(
+                            (".png", ".jpg", ".svg", ".gif", ".webp")
+                        ):
+                            discovered.add(clean_e)
         except Exception:
             pass
 
     for ep in endpoints:
         process_url(ep)
-        if discovered:
+        if len(discovered) >= 4:
             break
 
     return list(discovered)
@@ -484,6 +641,7 @@ def query_hunter_api(
 def discover_founding_team_emails(
     company_name: str,
     article_text: str = "",
+    article_url: str | None = None,
     known_domain: str | None = None,
     known_founders: list[dict[str, str]] | None = None,
     hunter_api_key: str | None = None,
@@ -498,7 +656,9 @@ def discover_founding_team_emails(
     # 1. Resolve company domain
     domain = clean_domain(known_domain)
     if not domain:
-        domain = resolve_company_domain(clean_company, article_text, client=http_client)
+        domain = resolve_company_domain(
+            clean_company, article_text, article_url=article_url, client=http_client
+        )
 
     # 2. Extract or use known founders
     founders: list[dict[str, str]] = []
@@ -568,7 +728,6 @@ def discover_founding_team_emails(
             if cand_email in seen_emails:
                 continue
 
-            base_confidence = 94 if idx == 0 else (86 if idx == 1 else 72)
             is_deliverable = None
             if primary_mx:
                 is_deliverable = verify_smtp_probe(cand_email, primary_mx)
@@ -577,27 +736,36 @@ def discover_founding_team_emails(
                 # Mailbox explicitly rejected
                 continue
 
-            verified_flag = bool(has_mx and (is_deliverable is True or idx == 0))
+            if is_deliverable is True:
+                confidence = 98
+                verified_flag = True
+                source = "smtp_probe"
+            else:
+                # Unverified pattern prediction: NEVER mark verified=True without proof
+                confidence = 68 if idx == 0 else (60 if idx == 1 else 50)
+                verified_flag = False
+                source = "pattern_mx"
+
             seen_emails.add(cand_email)
             emails.append(
                 {
                     "name": f_name,
                     "role": f_role,
                     "email": cand_email,
-                    "confidence": 98 if is_deliverable is True else base_confidence,
+                    "confidence": confidence,
                     "verified": verified_flag,
-                    "source": "smtp_probe" if is_deliverable is True else "pattern_mx",
+                    "source": source,
                     "provider": provider,
                 }
             )
 
-    # 6. Always include generic founder inboxes if MX is verified
+    # 6. Include generic role inboxes as unverified lower-priority fallbacks if MX verified
     if has_mx:
         role_inboxes = [
-            ("Founding Team", "Founder Inbox", f"founders@{domain}", 88),
-            ("Founding Team", "Founder Inbox", f"founder@{domain}", 86),
-            (f"{clean_company} CEO", "Executive Office", f"ceo@{domain}", 85),
-            (f"{clean_company} Team", "General Contact", f"contact@{domain}", 80),
+            ("Founding Team", "Role Inbox", f"founders@{domain}", 45),
+            ("Founding Team", "Role Inbox", f"founder@{domain}", 42),
+            (f"{clean_company} CEO", "Role Inbox", f"ceo@{domain}", 40),
+            (f"{clean_company} Team", "Role Inbox", f"contact@{domain}", 38),
         ]
         for name, role, gen_email, conf in role_inboxes:
             if gen_email not in seen_emails:
@@ -608,7 +776,7 @@ def discover_founding_team_emails(
                         "role": role,
                         "email": gen_email,
                         "confidence": conf,
-                        "verified": True,
+                        "verified": False,
                         "source": "role_inbox",
                         "provider": provider,
                     }

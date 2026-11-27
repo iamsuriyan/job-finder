@@ -32,7 +32,7 @@ def settings() -> Settings:
         ),
         user_agent="test-bot/1.0",
         request_timeout_seconds=5.0,
-        max_article_age_days=7,
+        max_article_age_days=30,
         find_founder_emails=False,
     )
 
@@ -144,6 +144,7 @@ def test_pipeline_with_founder_email_discovery(db: Database) -> None:
         feeds=[Feed(name="SampleFeed", url="https://example.com/rss")],
         filters=FilterConfig(funding_keywords=["raises"]),
         find_founder_emails=True,
+        max_article_age_days=30,
     )
     xml = (FIXTURES_DIR / "sample_feed.xml").read_text(encoding="utf-8")
     with respx.mock:

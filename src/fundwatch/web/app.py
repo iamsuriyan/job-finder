@@ -465,6 +465,7 @@ def create_app(settings: Settings, db: Database) -> FastAPI:
             domain, founders, emails = discover_founding_team_emails(
                 company_name=known_company,
                 article_text=article_full_text,
+                article_url=article.link,
                 known_domain=extraction.domain if extraction else None,
                 known_founders=extraction.founders if extraction else None,
                 hunter_api_key=settings.hunter_api_key,

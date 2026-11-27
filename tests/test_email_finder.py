@@ -244,3 +244,71 @@ def test_is_port_25_accessible_cached() -> None:
         probe_res = verify_smtp_probe("test@google.com", "smtp.google.com")
         assert probe_res is None
 
+
+@patch("dns.resolver.resolve")
+def test_verify_mx_rejects_null_mx_and_parking(mock_resolve: MagicMock) -> None:
+    # 1. RFC 7505 Null MX (exchange is ".")
+    null_item = MagicMock()
+    null_item.exchange = "."
+    mock_resolve.return_value = [null_item]
+    has_mx, _, hosts = verify_mx("pedestalai.com")
+    assert has_mx is False
+    assert hosts == []
+
+    # 2. Parking MX (e.g. secureserver.net)
+    park_item = MagicMock()
+    park_item.exchange = "mailstore1.secureserver.net."
+    mock_resolve.return_value = [park_item]
+    has_mx_park, _, hosts_park = verify_mx("inprime.com")
+    assert has_mx_park is False
+    assert hosts_park == []
+
+
+def test_verify_domain_identity_checks() -> None:
+    from fundwatch.email_finder import verify_domain_identity
+
+    # Mock parked page
+    with respx.mock:
+        respx.get("https://parked-domain.com").mock(
+            return_value=httpx.Response(200, text="<html><body>This domain is for sale on Sedo!</body></html>")
+        )
+        assert verify_domain_identity("parked-domain.com", "Nexus AI") is False
+
+        # Mock matching company page
+        respx.get("https://inprime.in").mock(
+            return_value=httpx.Response(200, text="<html><head><title>InPrime Finserv</title></head><body>Financial inclusion</body></html>")
+        )
+        assert verify_domain_identity("inprime.in", "InPrime Finserv") is True
+
+
+def test_resolve_recipient_prefers_scraped_over_unverified_role_inbox() -> None:
+    from fundwatch.outreach import resolve_recipient
+
+    ext = Extraction(
+        article_id="art-1",
+        company="SatSure",
+        domain="satsure.co",
+        emails=[
+            {
+                "name": "SatSure Team",
+                "role": "General Contact",
+                "email": "info@satsure.co",
+                "confidence": 95,
+                "verified": True,
+                "source": "website_scrape",
+            },
+            {
+                "name": "Founding Team",
+                "role": "Role Inbox",
+                "email": "founders@satsure.co",
+                "confidence": 45,
+                "verified": False,
+                "source": "role_inbox",
+            },
+        ],
+    )
+    name, email = resolve_recipient(ext)
+    assert email == "info@satsure.co"
+    assert name == "SatSure Team"
+
+
