@@ -6,57 +6,63 @@ max_article_age_days: 7
 user_agent: "fundwatch/0.1 (personal funding alert bot)"
 
 feeds:
-  - name: TechCrunch Startups
-    url: https://techcrunch.com/category/startups/feed/
-  - name: TechCrunch Enterprise
-    url: https://techcrunch.com/category/enterprise/feed/
-  - name: TechCrunch AI
-    url: https://techcrunch.com/category/artificial-intelligence/feed/
-  - name: Crunchbase News
-    url: https://news.crunchbase.com/feed/
-  - name: SiliconANGLE Enterprise
-    url: https://siliconangle.com/feed/
-  - name: Sifted Tech
-    url: https://sifted.eu/feed
-  - name: EU-Startups
-    url: https://www.eu-startups.com/feed/
-  - name: GeekWire Tech
-    url: https://www.geekwire.com/feed/
-  - name: TechCrunch Venture
-    url: https://techcrunch.com/category/venture/feed/
-  - name: Tech.eu
-    url: https://tech.eu/feed
-  - name: Pulse 2.0 Venture
-    url: https://pulse2.com/category/venture-capital/feed/
-  - name: BetaKit
-    url: https://betakit.com/feed/
   - name: Entrackr
     url: https://entrackr.com/rss
   - name: Inc42
     url: https://inc42.com/feed/
   - name: YourStory
     url: https://yourstory.com/feed
+  - name: YourStory Funding
+    url: https://yourstory.com/category/funding/feed
+  - name: YourStory Startups
+    url: https://yourstory.com/category/startups/feed
+  - name: Tech in Asia
+    url: https://www.techinasia.com/feed
+  - name: TechCrunch Startups
+    url: https://techcrunch.com/category/startups/feed/
+  - name: Crunchbase News
+    url: https://news.crunchbase.com/feed/
 
 find_founder_emails: true
 
 filters:
+  india_only: true
   early_stage_only: true
   funding_keywords:
     - raises
     - raised
+    - raise
     - funding
     - seed round
     - pre-seed
     - pre-series a
     - series a
     - series b
-    - series c
     - bags
     - secures
-    - closes
-  match_in_summary: true
+    - lands
+    - pockets
+  match_in_summary: false
   sector_keywords: []
-  geo_keywords: []
+  geo_keywords:
+    - india
+    - indian
+    - bengaluru
+    - bangalore
+    - mumbai
+    - delhi
+    - new delhi
+    - gurugram
+    - gurgaon
+    - noida
+    - hyderabad
+    - chennai
+    - pune
+    - coimbatore
+    - kochi
+    - kerala
+    - ahmedabad
+    - jaipur
   exclude_keywords:
     - webinar
     - podcast

@@ -126,6 +126,7 @@ class FilterConfig(BaseModel):
     geo_keywords: list[str] = Field(default_factory=list)
     exclude_keywords: list[str] = Field(default_factory=list)
     early_stage_only: bool = False
+    india_only: bool = False
     allowed_stages: list[str] = Field(
         default_factory=lambda: ["first_funding", "seed", "series_a", "unknown"]
     )

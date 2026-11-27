@@ -61,12 +61,135 @@ ROUNDUP_PATTERNS = [
 
 # Patterns indicating financial earnings reports rather than venture capital funding
 EARNINGS_PATTERNS = [
-    r"\brevenue\s+(?:jumps|surges|grows|drops|up|down)\b",
+    r"\brevenue\s+(?:jumps|surges|grows|drops|up|down|rises)\b",
     r"\blosses\s+(?:shrink|widen|narrow)\b",
     r"\bfinancial\s+results\b",
     r"\bquarterly\s+results\b",
     r"\bfy2[0-9]\b",
+    r"\bebitda\s+(?:positive|negative)\b",
 ]
+
+# Patterns indicating corporate acquisitions rather than fresh investment rounds
+ACQUISITION_PATTERNS = [
+    r"\bto acquire\b",
+    r"\bacquires?\b",
+    r"\bacquisition\b",
+    r"\bacquired by\b",
+    r"\bbought by\b",
+    r"\bbuys\s+.*?\bassets\b",
+]
+
+# Patterns indicating VC fund launches / LP capital raises (raising a fund, not a startup)
+VC_FUND_PATTERNS = [
+    r"\blaunches\s+(?:.*?\b)?(?:fund|corpus|first close)\b",
+    r"\bcloses\s+(?:.*?\b)?(?:fund|corpus)\b",
+    r"\bsecures\s+(?:.*?\b)?(?:fund|commitments? at first close)\b",
+    r"\bventure(?:s)?\s+fund\b",
+    r"\bfund\s+(?:i|ii|iii|iv|v|\d+)\b",
+    r"\bventure capital firm\s+.*?\blaunches\b",
+]
+
+# Patterns indicating public market trading, IPOs, or QIPs
+PUBLIC_MARKET_PATTERNS = [
+    r"\bipo\b",
+    r"\bqip\b",
+    r"\bnasdaq\b",
+    r"\bbse\b",
+    r"\bnse\b",
+    r"\bcloses\s+(?:up|down)\b",
+    r"\bshares?\s+(?:surge|plunge|fall|jump|dip|rally)\b",
+    r"\blisting\b",
+    r"\bpublic market\b",
+]
+
+# Patterns indicating academic / university research grants rather than startup investments
+ACADEMIC_GRANT_PATTERNS = [
+    r"\biit\s+[a-z]+\b",
+    r"\biim\s+[a-z]+\b",
+    r"\buniversity\b",
+    r"\bcollege\b",
+    r"\bresearch grant\b",
+    r"\bacademic\s+research\b",
+]
+
+# Patterns indicating regulatory, tax, or legal actions
+LEGAL_REGULATORY_PATTERNS = [
+    r"\bgst\b",
+    r"\btax department\b",
+    r"\bincome tax\b",
+    r"\bsearch and seizure\b",
+    r"\braid\b",
+    r"\benforcement directorate\b",
+    r"\bed conducts\b",
+    r"\blawsuit\b",
+    r"\bsues\b",
+    r"\bfir registered\b",
+    r"\bfraud\b",
+]
+
+# Patterns indicating cap table analyses, post-deal stake breakdowns
+CAPTABLE_ANALYSIS_PATTERNS = [
+    r"\bdecoding captable\b",
+    r"\bdecoding:\b",
+    r"\bretains\s+\d+(?:\.\d+)?%\s+stake\b",
+    r"\bshareholding pattern\b",
+]
+
+# Patterns for self-funding or bootstrapping
+BOOTSTRAP_PATTERNS = [
+    r"\bself-funding\b",
+    r"\bself-funded\b",
+    r"\bbootstrapped\b",
+]
+
+# Patterns for product/studio launches without investment
+PRODUCT_LAUNCH_PATTERNS = [
+    r"\blaunches\s+(?:film\s+)?studio\b",
+    r"\blaunches\s+(?:ai\s+)?platform\b",
+    r"\blaunches\s+(?:ai\s+)?app\b",
+    r"\blaunches\s+(?:ai\s+)?tool\b",
+    r"\blaunches\s+(?:ai\s+)?model\b",
+]
+
+# Geographic indicators for India
+INDIA_GEO_PATTERNS = [
+    r"\bindia\b",
+    r"\bindian\b",
+    r"\bbengaluru\b",
+    r"\bbangalore\b",
+    r"\bmumbai\b",
+    r"\bdelhi\b",
+    r"\bnew delhi\b",
+    r"\bgurugram\b",
+    r"\bgurgaon\b",
+    r"\bnoida\b",
+    r"\bhyderabad\b",
+    r"\bchennai\b",
+    r"\bpune\b",
+    r"\bahmedabad\b",
+    r"\bkolkata\b",
+    r"\bcoimbatore\b",
+    r"\bkochi\b",
+    r"\bkerala\b",
+    r"\bjaipur\b",
+    r"\b₹\b",
+    r"\brs\.?\b",
+    r"\bcr\b",
+    r"\bcrore\b",
+    r"\bcrores\b",
+    r"\blakh\b",
+    r"\blakhs\b",
+    r"\.in\b",
+]
+
+INDIA_NATIVE_FEEDS = {
+    "entrackr",
+    "inc42",
+    "yourstory",
+    "yourstory funding",
+    "yourstory startups",
+    "vccircle",
+}
 
 # Patterns for figurative non-capital uses of "raises" (e.g. "raises stakes", "raises the bar")
 FIGURATIVE_RAISES_PATTERNS = [
@@ -239,11 +362,43 @@ def is_funding_item(article: Article, cfg: FilterConfig) -> bool:
     if any(re.search(pat, title, re.IGNORECASE) for pat in EARNINGS_PATTERNS):
         return False
 
-    # 0c. Exclude figurative non-capital uses of "raises" (e.g. raises stakes/bar)
+    # 0c. Exclude corporate acquisitions
+    if any(re.search(pat, title, re.IGNORECASE) for pat in ACQUISITION_PATTERNS):
+        return False
+
+    # 0d. Exclude VC fund launches / LP fundraising
+    if any(re.search(pat, title, re.IGNORECASE) for pat in VC_FUND_PATTERNS):
+        return False
+
+    # 0e. Exclude public market trading, IPOs, or QIPs
+    if any(re.search(pat, title, re.IGNORECASE) for pat in PUBLIC_MARKET_PATTERNS):
+        return False
+
+    # 0f. Exclude regulatory, tax, or legal actions
+    if any(re.search(pat, title, re.IGNORECASE) for pat in LEGAL_REGULATORY_PATTERNS):
+        return False
+
+    # 0g. Exclude academic or university grants
+    if any(re.search(pat, title, re.IGNORECASE) for pat in ACADEMIC_GRANT_PATTERNS):
+        return False
+
+    # 0h. Exclude cap table analyses or post-deal stake breakdowns
+    if any(re.search(pat, title, re.IGNORECASE) for pat in CAPTABLE_ANALYSIS_PATTERNS):
+        return False
+
+    # 0i. Exclude self-funding or bootstrapping
+    if any(re.search(pat, title, re.IGNORECASE) for pat in BOOTSTRAP_PATTERNS):
+        return False
+
+    # 0j. Exclude product / studio launches without startup equity funding
+    if any(re.search(pat, title, re.IGNORECASE) for pat in PRODUCT_LAUNCH_PATTERNS):
+        return False
+
+    # 0k. Exclude figurative non-capital uses of "raises" (e.g. raises stakes/bar)
     if any(re.search(pat, title, re.IGNORECASE) for pat in FIGURATIVE_RAISES_PATTERNS):
         return False
 
-    # 0d. Exclude late-stage enterprise / debt rounds when early_stage_only is active
+    # 0l. Exclude late-stage enterprise / debt rounds when early_stage_only is active
     if cfg.early_stage_only:
         stage = classify_stage_tier(title, summary)
         if stage == StageTier.LATE:
@@ -263,13 +418,12 @@ def is_funding_item(article: Article, cfg: FilterConfig) -> bool:
         if not has_software_override:
             return False
 
-    # Text for funding keyword matching
+    # 3. Check funding keywords in TITLE (or summary if match_in_summary)
     if cfg.match_in_summary and summary:
         funding_search_text = f"{title} {summary}"
     else:
         funding_search_text = title
 
-    # 3. Check funding keywords
     if not cfg.funding_keywords:
         return False
     if not _matches_any_keyword(funding_search_text, cfg.funding_keywords):
@@ -279,7 +433,18 @@ def is_funding_item(article: Article, cfg: FilterConfig) -> bool:
     if cfg.sector_keywords and not _matches_any_keyword(full_text, cfg.sector_keywords):
         return False
 
-    # 5. Check geo keywords (if configured)
+    # 5. Check India geo targeting:
+    # When india_only is True, dedicated Indian startup feeds are native Indian startups,
+    # and any global feeds must contain explicit India location or currency identifiers.
+    if cfg.india_only:
+        feed_name_clean = (article.feed_name or "").strip().lower()
+        is_native_india = any(ind in feed_name_clean for ind in INDIA_NATIVE_FEEDS)
+        if not is_native_india:
+            has_india_geo = any(re.search(pat, full_text, re.IGNORECASE) for pat in INDIA_GEO_PATTERNS)
+            if not has_india_geo:
+                return False
+
+    # If explicit geo_keywords are configured, check them as well
     if cfg.geo_keywords and not _matches_any_keyword(full_text, cfg.geo_keywords):
         return False
 

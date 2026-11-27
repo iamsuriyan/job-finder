@@ -208,3 +208,72 @@ def test_geo_filtering() -> None:
 
     assert is_funding_item(art1, cfg) is True
     assert is_funding_item(art2, cfg) is False
+
+
+def test_india_only_filter() -> None:
+    cfg = FilterConfig(
+        funding_keywords=["raises", "raise", "seed round", "lands"],
+        india_only=True,
+    )
+    # Native Indian feed -> PASS
+    art_native = Article(
+        id="ind-1",
+        feed_name="Entrackr",
+        title="Matters.AI to raise Rs 110 Cr in pre-Series A",
+        link="https://entrackr.com/1",
+    )
+    assert is_funding_item(art_native, cfg) is True
+
+    # Global feed with Indian keywords/currency -> PASS
+    art_global_india = Article(
+        id="ind-2",
+        feed_name="TechCrunch Startups",
+        title="Indian chip startup Bharat Semi lands $24M seed round",
+        link="https://techcrunch.com/1",
+    )
+    assert is_funding_item(art_global_india, cfg) is True
+
+    # Global feed without India location -> REJECT
+    art_foreign = Article(
+        id="for-1",
+        feed_name="TechCrunch Startups",
+        title="Munich-based Vetaion raises €5.7 million seed round",
+        link="https://techcrunch.com/2",
+    )
+    assert is_funding_item(art_foreign, cfg) is False
+
+
+def test_non_funding_pattern_rejections() -> None:
+    cfg = FilterConfig(
+        funding_keywords=["raises", "secures", "funding", "seed round"],
+        india_only=True,
+    )
+    # Acquisition -> REJECT
+    assert is_funding_item(
+        Article(id="1", feed_name="Entrackr", title="Shadowfax to acquire WeFast India assets for Rs 23 Cr", link="https://example.com/1"),
+        cfg,
+    ) is False
+
+    # VC fund launch -> REJECT
+    assert is_funding_item(
+        Article(id="2", feed_name="Entrackr", title="Aeravti Ventures launches Rs 300 Cr Fund II", link="https://example.com/2"),
+        cfg,
+    ) is False
+
+    # Tax raid / investigation -> REJECT
+    assert is_funding_item(
+        Article(id="3", feed_name="Entrackr", title="GST department conducts search at Turtlemint subsidiary in Mumbai", link="https://example.com/3"),
+        cfg,
+    ) is False
+
+    # Revenue report -> REJECT
+    assert is_funding_item(
+        Article(id="4", feed_name="Entrackr", title="DCGpac’s FY26 revenue rises 35% to Rs 208 Cr", link="https://example.com/4"),
+        cfg,
+    ) is False
+
+    # IPO / public trading -> REJECT
+    assert is_funding_item(
+        Article(id="5", feed_name="Entrackr", title="Anthropic closes up 17% after massive IPO", link="https://example.com/5"),
+        cfg,
+    ) is False
